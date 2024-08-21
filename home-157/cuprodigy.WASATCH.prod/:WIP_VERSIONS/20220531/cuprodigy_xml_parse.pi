@@ -1,0 +1,447 @@
+# File: cuprodigy_xml_parse.pi
+
+sub xml_fmt_tag_name{
+   return(join('@',@_));
+}
+
+sub xml_config{
+   my($Envelope_sequence)=@_;
+   my($Envelope_XML_MULTIPLE);
+	#
+	# NOTE: The xml_parse() routine will populate the global variables:
+	#	%XML_NAMESPACE_BY_TAG_INDEX
+	#	%XML_ATTRIBUTES_BY_TAG_INDEX
+	#	%XML_DATA_BY_TAG_INDEX
+	#	%XML_SEQ_BY_TAG_INDEX
+	#	%XML_TAGS_FOUND
+	#
+	if(${XML_TAG_INDEX_FMT} eq ""){ $XML_TAG_INDEX_FMT="%05.0f"; }
+	if(${XML_SINGLE} eq ""){ $XML_SINGLE=sprintf(${XML_TAG_INDEX_FMT},1); }
+	if(${XML_CASE_SENSITIVE} eq ""){ $XML_CASE_SENSITIVE=1; }
+	if(${XML_RECEIVED_HAS_BEEN_XMLED} eq ""){ $XML_RECEIVED_HAS_BEEN_XMLED=1; }
+	if($Envelope_sequence =~ /^0*[1-9][0-9]*$/){
+		$Envelope_XML_MULTIPLE=sprintf(${XML_TAG_INDEX_FMT},${Envelope_sequence});
+	}else{
+		$Envelope_XML_MULTIPLE=${XML_SINGLE};
+	}
+	if(${XML_CASE_SENSITIVE}){
+		$XML_KEY_HAS_SOAP=join("$;","Envelope");
+		$XML_KEY_HAS_SOAP_HEADER=join("$;","Envelope",${Envelope_XML_MULTIPLE},"Header");
+		$XML_KEY_HAS_SOAP_BODY=join("$;","Envelope",${Envelope_XML_MULTIPLE},"Body");
+		$XML_KEY_SOAP_HEADER=join("$;","Envelope",${Envelope_XML_MULTIPLE},"Header",${XML_SINGLE});
+		$XML_KEY_SOAP_BODY=join("$;","Envelope",${Envelope_XML_MULTIPLE},"Body",${XML_SINGLE});
+	}else{
+		$XML_KEY_HAS_SOAP=join("$;","ENVELOPE");
+		$XML_KEY_HAS_SOAP_HEADER=join("$;","ENVELOPE",${Envelope_XML_MULTIPLE},"HEADER");
+		$XML_KEY_HAS_SOAP_BODY=join("$;","ENVELOPE",${Envelope_XML_MULTIPLE},"BODY");
+		$XML_KEY_SOAP_HEADER=join("$;","ENVELOPE",${Envelope_XML_MULTIPLE},"HEADER",${XML_SINGLE});
+		$XML_KEY_SOAP_BODY=join("$;","ENVELOPE",${Envelope_XML_MULTIPLE},"BODY",${XML_SINGLE});
+	}
+	if(${XML_PARSE_REPLACE_BACKSLASH_AS_IF_IS_ESCAPE_CHARACTER} eq ""){ $XML_PARSE_REPLACE_BACKSLASH_AS_IF_IS_ESCAPE_CHARACTER=1; }
+	if(${XML_PARSE_REPLACE_BACKSLASH_WITH_FORWARDSLASH} eq ""){ $XML_PARSE_REPLACE_BACKSLASH_WITH_FORWARDSLASH=1; }
+}
+
+sub xml_data_by_tag_index_key{
+   local($rtrn);
+   local($tag,$seq);
+	while(@_ > 0){
+		# Tag name (points to tag's attribute values (maximum sequence, namespace, qualifiers))
+		$tag=shift(@_); if(!${XML_CASE_SENSITIVE}){ $tag=~tr/a-z/A-Z/; }
+		$rtrn.=$; if ${rtrn} ne "";
+		$rtrn.=${tag};
+		# Tag sequence (points to tag's data value)
+		if(@_ > 0){
+			$seq=shift(@_);
+			if($seq < 1){ $seq=1; }
+			$rtrn.=$;.sprintf(${XML_TAG_INDEX_FMT},${seq});
+		}
+	}
+	return(${rtrn});
+}
+
+sub xml_parse{
+   my($xml_data,$append_to_current_parsed_xml)=@_;
+   my($xml_declaration_tag);
+   my($STRIP_VALUE_TRAILING_SPACES)=1;
+   my($data);
+   my($idx);
+   my(@tags,@values);
+   my($tag,$tag_namespace,$tag_attributes,$value);
+   my($is_combined_open_close_tag)=0;
+   my(@XML_KEY_BY_TAG_INDEX);
+   my($xml_key_by_tag_index,$xml_seq_by_tag_index);
+   my($CDATA_beg,$CDATA_end)=('![CDATA[',']]');
+   my($xml_data_xmled_prefix,$xml_data_xmled_postfix,$xml_data_xmled_to_fix);
+   my($Envelope_sequence_before);
+   my($Envelope_sequence_after);
+	#
+	# Expects assigned (calling routine must have declared as "local()"):
+	#	$XML_TAG_INDEX_FMT
+	#	$XML_SINGLE
+	# though a default value will be assigned if found blank ("").
+	#
+	# Will populate (calling routine must have declared as "local()"):
+	#	%XML_NAMESPACE_BY_TAG_INDEX
+	#	%XML_ATTRIBUTES_BY_TAG_INDEX
+	#	%XML_DATA_BY_TAG_INDEX
+	#	%XML_SEQ_BY_TAG_INDEX
+	#	%XML_TAGS_FOUND
+	#
+
+	# Tag attribues and values have not been filtered to decode the XML safe
+	# strings like "&gt;" "&lt;", "&amp;", and "%20".  While it may be 
+	# desirable to do so, it is also counter productive for the DMS/HomeCU
+	# interface since we will simply have to re-encode them back to XML safe
+	# strings later.
+
+	# While XML tags are case sensitive, the variable $XML_CASE_SENSITIVE
+	# is used to control whether or not to treat the tags as case sensitive;
+	# if the tag names are unique without case sensitivity, then it may be
+	# easier (fewer coding mistakes) to reference the tags in upper case.
+
+	if(${append_to_current_parsed_xml}){
+		1;
+	}else{
+		undef %XML_NAMESPACE_BY_TAG_INDEX;
+		undef %XML_ATTRIBUTES_BY_TAG_INDEX;
+		undef %XML_DATA_BY_TAG_INDEX;
+		undef %XML_SEQ_BY_TAG_INDEX;
+		undef %XML_TAGS_FOUND;
+	}
+	if($XML_DATA_BY_TAG_INDEX{"Envelope"} =~ /^\d/){
+   		$Envelope_sequence_before=(split(/,/,$XML_DATA_BY_TAG_INDEX{"Envelope"}))[0];
+	}
+	if(${XML_TAG_INDEX_FMT} eq ""){ $XML_TAG_INDEX_FMT="%05.0f"; }
+	if(${XML_SINGLE} eq ""){ $XML_SINGLE=sprintf(${XML_TAG_INDEX_FMT},1); }
+	if(${XML_CASE_SENSITIVE} eq ""){ $XML_CASE_SENSITIVE=1; }
+	if(${XML_PARSE_REPLACE_BACKSLASH_AS_IF_IS_ESCAPE_CHARACTER} eq ""){ $XML_PARSE_REPLACE_BACKSLASH_AS_IF_IS_ESCAPE_CHARACTER=1; }
+	if(${XML_PARSE_REPLACE_BACKSLASH_WITH_FORWARDSLASH} eq ""){ $XML_PARSE_REPLACE_BACKSLASH_WITH_FORWARDSLASH=1; }
+	if(${XML_RECEIVED_HAS_BEEN_XMLED} eq ""){ $XML_RECEIVED_HAS_BEEN_XMLED=1; }
+	$xml_data=~s/&#xA;|&#10;|&#010;/\n/gi;	# Likely HTML incorrectly (was not re-encoded for XML sanity) shoved in to XML causing a problem parsing the XML.
+	$xml_data=~s/&#xD;|&#13;|&#013;/\r/gi;	# Likely HTML incorrectly (was not re-encoded for XML sanity) shoved in to XML causing a problem parsing the XML.
+	$xml_data=~s/[\r\n\s][\r\n\s]*$//;
+	if($xml_data=~/^<\?xml[^?>][^?>]*\?>/i){	# XML Identity Tag
+		$xml_declaration_tag=${&};
+		$xml_data=${'};
+	}
+	$xml_data=~s/^[\r\n\s][\r\n\s]*//;
+	if(${XML_RECEIVED_HAS_BEEN_XMLED} and $xml_data=~ />\s*&lt;[^<>]*&gt;\s*</){
+		$xml_data_xmled_prefix=$`.">";
+		$xml_data_xmled_postfix="<".$';
+		$xml_data_xmled_to_fix=$&; $xml_data_xmled_to_fix=~s/^>//; $xml_data_xmled_to_fix=~s/<$//;
+		$xml_data_xmled_to_fix=~s/&lt;/</g;
+		$xml_data_xmled_to_fix=~s/&gt;/>/g;
+		$xml_data_xmled_to_fix=~s/&amp;/&/g;
+		$xml_data=${xml_data_xmled_prefix}.${xml_data_xmled_to_fix}.${xml_data_xmled_postfix};
+		$xml_data_xmled_prefix="";
+		$xml_data_xmled_postfix="";
+		$xml_data_xmled_to_fix="";
+	}
+	if(${xml_data} ne ""){
+		&logfile_and_die("XML parsing failed, expected leading '<', but found '".substr(${xml_data},0,1)."'\n") if $xml_data !~ /^</;
+		while($xml_data =~ /\Q<${CDATA_beg}\E[^>]/io){
+			$xml_data=~s/(\Q<${CDATA_beg}\E)([^>])/$1>$2/isgo;			# Handle special pattern: <![CDATA[ ... ]]>
+			$xml_data=~s/([^<])([\s\r\n]*)(\Q${CDATA_end}>\E)/$1$2<\/$3/sgo;	# Handle special pattern: <![CDATA[ ... ]]>
+		}
+		foreach $data (split(/</,join("",substr(${xml_data},1)))){
+			($tag,$value)=split(/>/,$data,2);
+			$tag=~s/^\s\s*//; $tag=~s/\s\s*$//;	# Always strip the leading and trailing pad characters from the xml identity tag.
+			if(${XML_PARSE_REPLACE_BACKSLASH_AS_IF_IS_ESCAPE_CHARACTER}){ $value=~s/\\(.)/$1/g; }
+			if(${XML_PARSE_REPLACE_BACKSLASH_WITH_FORWARDSLASH}){ $value=~s/\\/\//g; }
+			if($value ne "" and ${STRIP_VALUE_TRAILING_SPACES}){
+				$value=~s/\s\s*$//;			# Only strip the trailing pad characters from the xml tag value.
+				if($value eq ""){ $value=" "; }		# But never strip the xml tag value to a length of zero (0).
+			}
+			if($tag =~ /^br$/i and $xml_data !~ /<\/br>/i){ $tag.="/"; }	# HTML incorrectly (was not re-encoded for XML sanity) shoved in to XML causing a problem because a special HTML tag is not paired as open-and-close.
+			if($tag =~ /^hr$/i and $xml_data !~ /<\/hr>/i){ $tag.="/"; }	# HTML incorrectly (was not re-encoded for XML sanity) shoved in to XML causing a problem because a special HTML tag is not paired as open-and-close.
+			if($tag !~ /^\// and $tag ne ${CDATA_end}){
+				if($tag =~ /^!--.*--$/){
+					# Ignore XML comments
+				}else{
+					# Open Tag
+					if($tag =~ /\/$/){
+						$is_combined_open_close_tag=1;
+						$tag=~s/\s*\/$//;
+					}
+					$tag_namespace="";
+					if($tag =~ /^[^\s]*:/){
+						$tag=${'};
+						$tag_namespace=${&}; $tag_namespace=~s/:$//;
+					}
+					$tag_attributes="";
+					if($tag =~ /\s/){
+						$tag=${`};
+						$tag_attributes=${'};
+						$tag_attributes=~s/^\s*//;
+						$tag_attributes=~s/\s*$//;
+					}
+					if(!${XML_CASE_SENSITIVE}){
+						$tag=~tr/a-z/A-Z/;
+						$tag_namespace=~tr/a-z/A-Z/;
+					}
+					push(@values,$value);
+					push(@tags,$tag);
+					$xml_key_by_tag_index=join($;,@XML_KEY_BY_TAG_INDEX,${tag});
+					$xml_seq_by_tag_index=sprintf(${XML_TAG_INDEX_FMT},$XML_SEQ_BY_TAG_INDEX{${xml_key_by_tag_index}}+1);
+					$XML_SEQ_BY_TAG_INDEX{${xml_key_by_tag_index}}=${xml_seq_by_tag_index};
+					push(@XML_KEY_BY_TAG_INDEX,${tag},${xml_seq_by_tag_index});
+					$XML_DATA_BY_TAG_INDEX{${xml_key_by_tag_index}}=${xml_seq_by_tag_index};
+					$XML_NAMESPACE_BY_TAG_INDEX{${xml_key_by_tag_index}}=${tag_namespace};
+					$XML_ATTRIBUTES_BY_TAG_INDEX{${xml_key_by_tag_index}}=${tag_attributes};
+					$XML_TAGS_FOUND{join($;,@tags)}++;
+					if(${is_combined_open_close_tag}){
+						if(${tag_namespace} eq ""){
+							$tag="/".${tag};
+						}else{
+							$tag="/".${tag_namespace}.":".${tag};
+						}
+						$is_combined_open_close_tag=0;
+					}
+				}
+			}
+			if($tag =~ /^\// or $tag eq ${CDATA_end}){
+				# Close Tag
+				$tag=substr($tag,1);
+				$tag_namespace="";
+				if($tag =~ /^[^\s]*:/){
+					$tag=${'};
+					$tag_namespace=${&}; $tag_namespace=~s/:$//;
+				}
+				$tag_attributes="";
+				if($tag =~ /\s/){
+					$tag=${`};
+					$tag_attributes=${'};
+					$tag_attributes=~s/^\s*//;
+					$tag_attributes=~s/\s*$//;
+				}
+				if(!${XML_CASE_SENSITIVE}){
+					$tag=~tr/a-z/A-Z/;
+					$tag_namespace=~tr/a-z/A-Z/;
+				}
+				if($tags[$#tags] ne ${tag}){
+					if($tags[$#tags] =~ /^\Q${CDATA_beg}\E$/i){
+						&logfile_and_die("XML parsing failed, expected '${CDATA_end}>' but found '</${tag}>'.\n") if ${CDATA_end} ne ${tag};
+					}else{
+						&logfile_and_die("XML parsing failed, expected '</".$tags[$#tags].">' but found '</${tag}>'.\n") if $tags[$#tags] ne ${tag};
+					}
+				}
+				&logfile_and_die("XML parsing failed, found a value after '</${tag}>'.\n") if ${value} !~ /^[\r\n\s]*$/;
+				$xml_key=join($;,@XML_KEY_BY_TAG_INDEX);
+				if($XML_DATA_BY_TAG_INDEX{${xml_key}} eq ""){
+					$XML_DATA_BY_TAG_INDEX{${xml_key}}=pop(@values);
+				}else{
+					$XML_DATA_BY_TAG_INDEX{${xml_key}}.=$;.pop(@values);	# I don't think this can ever occur now that the key is by paired TAG and INDEX values.
+				}
+				pop(@tags);
+				pop(@XML_KEY_BY_TAG_INDEX); pop(@XML_KEY_BY_TAG_INDEX);
+			}
+		}
+	}
+	if($XML_DATA_BY_TAG_INDEX{"Envelope"} =~ /^\d/){
+   		$Envelope_sequence_after=(split(/,/,$XML_DATA_BY_TAG_INDEX{"Envelope"}))[0];
+		if(${Envelope_sequence_before} ne ${Envelope_sequence_after}){
+			&xml_config(${Envelope_sequence_after});
+		}
+	}
+	return(${xml_declaration_tag});
+}
+
+sub xml_parse_soap_like_exception{
+   my($rtrn)="";
+	if(${XML_CASE_SENSITIVE}){
+		if($XML_DATA_BY_TAG_INDEX{"Envelope",${XML_SINGLE},"Body",${XML_SINGLE},"Fault",${XML_SINGLE},"faultcode",${XML_SINGLE}} ne ""){
+			$rtrn=join(" - ",
+				$XML_DATA_BY_TAG_INDEX{"Envelope",${XML_SINGLE},"Body",${XML_SINGLE},"Fault",${XML_SINGLE},"faultcode",${XML_SINGLE}},
+				$XML_DATA_BY_TAG_INDEX{"Envelope",${XML_SINGLE},"Body",${XML_SINGLE},"Fault",${XML_SINGLE},"faultstring",${XML_SINGLE}}
+			);
+		}
+	}else{
+		if($XML_DATA_BY_TAG_INDEX{"ENVELOPE",${XML_SINGLE},"BODY",${XML_SINGLE},"FAULT",${XML_SINGLE},"FAULTCODE",${XML_SINGLE}} ne ""){
+			$rtrn=join(" - ",
+				$XML_DATA_BY_TAG_INDEX{"ENVELOPE",${XML_SINGLE},"BODY",${XML_SINGLE},"FAULT",${XML_SINGLE},"FAULTCODE",${XML_SINGLE}},
+				$XML_DATA_BY_TAG_INDEX{"ENVELOPE",${XML_SINGLE},"BODY",${XML_SINGLE},"FAULT",${XML_SINGLE},"FAULTSTRING",${XML_SINGLE}}
+			);
+		}
+	}
+	return(${rtrn});
+}
+
+sub xml_print_associative_array{
+   local(*OUTPUT,$output_prefix,$xml_common_prefix,$xml_data)=@_;
+   my($xml_declaration_tag);
+   my($key);
+   my($tag_composit);
+   my(@tag_values);
+   local(%XML_DATA_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_NAMESPACE_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_ATTRIBUTES_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_SEQ_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_TAGS_FOUND);		# Will be populated by xml_parse().
+   local($XML_TAG_INDEX_FMT)="";	# Default value will be assigned by xml_parse().
+   local($XML_SINGLE)="";		# Default value will be assigned by xml_parse().
+	print OUTPUT join("\t",${output_prefix},${xml_common_prefix}),"\n" if ${xml_common_prefix} ne "";
+	$xml_declaration_tag=&xml_parse(${xml_data});
+	print OUTPUT join("\t",${output_prefix},${xml_declaration_tag}),"\n" if ${xml_declaration_tag} ne "";
+	foreach $key (sort(keys(%XML_DATA_BY_TAG_INDEX))){
+		($tag_composit=$key)=~s/$;/./g;
+		$tag_namespace_and_attributes="";
+		if($tag_composit !~ /\.\d*$/){
+			$tag_namespace_and_attributes=",".$XML_NAMESPACE_BY_TAG_INDEX{${key}}.",".$XML_ATTRIBUTES_BY_TAG_INDEX{${key}};
+		}
+		@tag_values=split(/$;/,$XML_DATA_BY_TAG_INDEX{${key}});
+		if(@tag_values <= 1){
+			print OUTPUT join("\t",${output_prefix},${tag_composit},$tag_values[0].${tag_namespace_and_attributes}),"\n";
+		}else{
+			for($idx=0;$idx<=$#tag_values;$idx++){
+				print OUTPUT join("\t",${output_prefix},${tag_composit}."[".sprintf("%05.0f",${idx})."]",$tag_values[${idx}].${tag_namespace_and_attributes}),"\n";
+			}
+		}
+	}
+	select((select(OUTPUT),$|=1)[$[]);	# Flush the output, just to keep mixed output streams clean.
+}
+
+sub xml_print_raw_datastream{
+   local(*OUTPUT,$output_prefix,$xml_common_prefix,$xml_data)=@_;
+   my($xml_declaration_tag);
+   my($prefix);
+   my($indent_string)="  ";
+   my($indent_level);
+   my(@XML_CLASS,@XML_DETAIL,@XML_INDENT);
+   my($idx);
+   my($CDATA_beg,$CDATA_end)=('![CDATA[',']]');
+   local(%XML_NAMESPACE_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_ATTRIBUTES_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_DATA_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_SEQ_BY_TAG_INDEX);	# Will be populated by xml_parse().
+   local(%XML_TAGS_FOUND);		# Will be populated by xml_parse().
+   local($XML_TAG_INDEX_FMT)="";	# Default value will be assigned by xml_parse().
+   local($XML_SINGLE)="";		# Default value will be assigned by xml_parse().
+	print OUTPUT ${output_prefix},"\t",${xml_common_prefix},"\n" if ${xml_common_prefix} ne "";
+	$xml_declaration_tag=&xml_parse(${xml_data});
+	print OUTPUT ${output_prefix},"\t",${xml_declaration_tag},"\n" if ${xml_declaration_tag} ne "";
+	if(${xml_declaration_tag} ne ""){
+		substr($xml_data,0,length(${xml_declaration_tag}))="";
+	}
+	if(0){
+		if($xml_data =~ /<OFX>/){
+			$xml_data_prefix=${`};
+			$xml_data=${&}.${'};
+		}
+		print OUTPUT ${output_prefix},"\t",${xml_data_prefix},"\n" if ${xml_data_prefix} ne "";
+	}
+	while($xml_data =~ /\Q<${CDATA_beg}\E[^>]/io){
+		$xml_data=~s/(\Q<${CDATA_beg}\E)([^>])/$1>$2/isgo;			# Handle special pattern: <![CDATA[ ... ]]>
+		$xml_data=~s/([^<])([\s\r\n]*)(\Q${CDATA_end}>\E)/$1$2<\/$3/sgo;	# Handle special pattern: <![CDATA[ ... ]]>
+	}
+	$indent_level=sprintf("%.0f",0);
+	foreach $tag (split(/</,$xml_data)){
+		next if $tag eq "";	# Minimally, the first tag begins with "<"
+		($v1,$v2)=split(/>/,$tag);
+		if($v1 !~ /^\//){
+			if($v1 !~ /\/$/){
+				push(@XML_CLASS,"TAG_BEG");
+				push(@XML_DETAIL,${v1});
+				push(@XML_INDENT,${indent_string} x ${indent_level});
+				$indent_level=sprintf("%.0f",${indent_level}+1);
+				if(${v2} ne ""){
+					push(@XML_CLASS,"DATA");
+					push(@XML_DETAIL,${v2});
+					push(@XML_INDENT,${indent_string} x ${indent_level});
+				}
+			}else{
+				$v1=~s/\s*\/$//;
+				push(@XML_CLASS,"TAG_BEG_END");
+				# TAG_BEG
+				push(@XML_DETAIL,${v1});
+				push(@XML_INDENT,${indent_string} x ${indent_level});
+				$indent_level=sprintf("%.0f",${indent_level}+1);
+				if(${v2} ne ""){ 1; }	# Should always be ""
+				# TAG_END
+				$indent_level=sprintf("%.0f",${indent_level}-1);
+				if(${v2} ne ""){ 1; }	# Should always be ""
+			}
+		}else{
+			$indent_level=sprintf("%.0f",${indent_level}-1);
+			push(@XML_CLASS,"TAG_END");
+			push(@XML_DETAIL,substr(${v1},1));
+			push(@XML_INDENT,${indent_string} x ${indent_level});
+			if(${v2} ne ""){
+				push(@XML_CLASS,"DATA");
+				push(@XML_DETAIL,${v2});
+				push(@XML_INDENT,${indent_string} x ${indent_level});
+			}
+		}
+	}
+	for($idx=0;$idx<=$#XML_CLASS;$idx++){
+		if    ($XML_CLASS[$idx] eq "TAG_BEG"){
+			if    ($XML_CLASS[$idx+1] eq "TAG_END" and $XML_DETAIL[$idx] eq $XML_DETAIL[$idx+1]){
+				print	OUTPUT
+					${output_prefix},"\t",
+					$XML_INDENT[$idx],
+					"<".$XML_DETAIL[$idx].">",
+					"<"."/".$XML_DETAIL[$idx+1].">",
+					"\n";
+				$idx+=1;
+			}elsif($XML_CLASS[$idx+2] eq "TAG_END" and $XML_DETAIL[$idx] eq $XML_DETAIL[$idx+2]){
+				print	OUTPUT
+					${output_prefix},"\t",
+					$XML_INDENT[$idx],
+					"<".$XML_DETAIL[$idx].">",
+					$XML_DETAIL[$idx+1],
+					"<"."/".$XML_DETAIL[$idx+2].">",
+					"\n";
+				$idx+=2;
+			}else{
+				if($XML_DETAIL[$idx] eq ${CDATA_beg}){
+					print	OUTPUT
+						${output_prefix},"\t",
+						$XML_INDENT[$idx],
+						"<".$XML_DETAIL[$idx]    ,	# Handle special pattern: <![CDATA[ ... ]]>
+						"\n";
+				}else{
+					print	OUTPUT
+						${output_prefix},"\t",
+						$XML_INDENT[$idx],
+						"<".$XML_DETAIL[$idx].">",
+						"\n";
+				}
+			}
+		}elsif($XML_CLASS[$idx] eq "DATA"){
+			print	OUTPUT
+				${output_prefix},"\t",
+				$XML_INDENT[$idx],
+				$XML_DETAIL[$idx],
+				"\n";
+		}elsif($XML_CLASS[$idx] eq "TAG_BEG_END"){
+			print	OUTPUT
+				${output_prefix},"\t",
+				$XML_INDENT[$idx],
+				"<".$XML_DETAIL[$idx]." /".">",
+				"\n";
+		}elsif($XML_CLASS[$idx] eq "TAG_END"){
+			if($XML_DETAIL[$idx] eq ${CDATA_end}){
+				print	OUTPUT
+					${output_prefix},"\t",
+					$XML_INDENT[$idx],
+					        $XML_DETAIL[$idx].">",	# Handle special pattern: <![CDATA[ ... ]]>
+					"\n";
+			}else{
+				print	OUTPUT
+					${output_prefix},"\t",
+					$XML_INDENT[$idx],
+					"<"."/".$XML_DETAIL[$idx].">",
+					"\n";
+			}
+		}else{
+			print	OUTPUT
+				${output_prefix},"\t",
+				$XML_INDENT[$idx],
+				$XML_DETAIL[$idx],
+				"\n";
+			&logfile_and_die("Not yet coded to print internally designated XML class: ".$XML_CLASS[$idx]."\n");
+		}
+	}
+	select((select(OUTPUT),$|=1)[$[]);	# Flush the output, just to keep mixed output streams clean.
+}
+
+1;

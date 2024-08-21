@@ -1,0 +1,1308 @@
+# File: cuprodigy_message_methods.pi
+
+sub common_cuprodigy_soap_like_errors{
+   my($error_number,$error_prefix,$status,$soap_exception,@others)=@_;
+   my($rtrn)="";
+	if(${rtrn} eq ""){
+		if(${status} ne ""){
+			&logfile(${error_prefix}.${status}."\n");
+			$rtrn=join("\t","099",$CTRL__STATUS_TEXT{"099"});
+			$GLOB__STACKED_ERROR_099=1; &logfile("Stacking error 099 for later use.\n");
+		}
+	}
+	if(${rtrn} eq ""){
+		while(@others > 0){
+			if($others[0] !~ /^\s*$/){
+				$others[0]=&message_error_sanitize($others[0]);
+				&logfile(${error_prefix}.$others[0]."\n");
+				$rtrn=join("\t",${error_number},${error_prefix}.$others[0]);
+				last;
+			}
+			shift(@others);
+		}
+	}
+	if(${rtrn} eq ""){
+		if(${soap_exception} ne ""){
+			&logfile(${error_prefix}.${soap_exception}."\n");
+			$rtrn=join("\t","099",$CTRL__STATUS_TEXT{"099"});
+			$GLOB__STACKED_ERROR_099=1; &logfile("Stacking error 099 for later use.\n");
+		}
+	}
+	return(${rtrn});
+}
+
+sub message_error_sanitize{
+   local($text)=@_;
+	$text =~ s/^\t//; $text=~s/\t\t*/\t/; $text=~s/\t$//;
+	$text =~ s/\t/ - /;
+	$text =~ s/^[\r\n][\r\n]*//;
+	$text =~ s/[\r\n][\r\n]*$//;
+	$text =~ s/[\r\n][\r\n]*/ ;; /g;
+	return(${text});
+}
+
+sub initialize_cuprodigy{
+   my($header,$xmldata,$status,$soap_exception);
+   my($error);
+	if    (${CONF__CUPRODIGY_SERVER__TELNET_IPADDR} =~ /^\s*$/){
+		$error="Not properly configured: \$CONF__CUPRODIGY_SERVER__TELNET_IPADDR";
+	}elsif(${CONF__CUPRODIGY_SERVER__TELNET_PORT} !~ /^\d\d*$/){
+		$error="Not properly configured: \$CONF__CUPRODIGY_SERVER__TELNET_PORT";
+	}else{
+		$SOAP_SERVER=${CONF__CUPRODIGY_SERVER__TELNET_IPADDR};
+		$SOAP_PORT=${CONF__CUPRODIGY_SERVER__TELNET_PORT};
+		if(${SOAP_PORT} eq "80"){
+			$SOAP_PROXY_HOST="http://${SOAP_SERVER}/ws/QIE";
+		}else{
+			$SOAP_PROXY_HOST="http://${SOAP_SERVER}:${SOAP_PORT}/ws/QIE";
+		}
+		if(sprintf("%.0f",${CTRL__CUPRODIGY_SERVER__DISCONNECT_SECONDS__LIFECYCLE}) > 0){
+			$SOAP_DISCONNECT_SECONDS_LIFECYCLE=sprintf("%.0f",${CTRL__CUPRODIGY_SERVER__DISCONNECT_SECONDS__LIFECYCLE});
+		}else{
+			$SOAP_DISCONNECT_SECONDS_LIFECYCLE="";
+		}
+		if(sprintf("%.0f",${CTRL__CUPRODIGY_SERVER__DISCONNECT_SECONDS__INACTIVITY}) > 0){
+			$SOAP_DISCONNECT_SECONDS_INACTIVITY=sprintf("%.0f",${CTRL__CUPRODIGY_SERVER__DISCONNECT_SECONDS__INACTIVITY});
+		}else{
+			$SOAP_DISCONNECT_SECONDS_INACTIVITY="";
+		}
+		$SOAP_URI_NS="";
+		$SOAP_ACTION_NS="";
+		$SOAP_XML_EOL="\r\n";
+		&post_request_setup(${SOAP_SERVER},${SOAP_PORT},${SOAP_PROXY_HOST},${SOAP_URI_NS},${SOAP_ACTION_NS},${SOAP_DISCONNECT_SECONDS_LIFECYCLE},${SOAP_DISCONNECT_SECONDS_INACTIVITY});
+		if(${error} eq ""){
+			$XML_CASE_SENSITIVE=1;
+			&config_xml();
+			if(${XML_CASE_SENSITIVE}){
+				$XML_KEY__ERROR_DESCRIPTION=join("$;",${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"error",${XML_SINGLE});
+			}else{
+				$XML_KEY__ERROR_DESCRIPTION=join("$;",${XML_KEY_SOAP_BODY},"SUBMITMESSAGERESPONSE",${XML_SINGLE},"RETURN",${XML_SINGLE},"RESPONSE",${XML_SINGLE},"ERROR",${XML_SINGLE});
+			}
+		}
+	}
+	return(${error});
+}
+
+sub convdatetime_cuprodigy_message_to_timestamp_14{
+   my($cuprodigy_message_datetime)=@_;
+   my($timestamp_14_datetime);
+   	if(${cuprodigy_message_datetime} !~ /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^\d]/){
+   		$timestamp_14_datetime="";
+	}else{
+   		$timestamp_14_datetime=${cuprodigy_message_datetime};
+   		$timestamp_14_datetime=~s/[-:T]//g;
+		$timestamp_14_datetime=substr($timestamp_14_datetime,0,14);
+	}
+	return(${timestamp_14_datetime});
+}
+
+sub convdatetime_cuprodigy_message_to_timestamp_8{
+   my($cuprodigy_message_datetime)=@_;
+   my($timestamp_14_datetime);
+   my($timestamp_8_datetime);
+	$timestamp_14_datetime=&convdatetime_cuprodigy_message_to_timestamp_14(${cuprodigy_message_datetime});
+	if(${timestamp_14_datetime} ne ""){ 
+		$timestamp_8_datetime=substr($timestamp_14_datetime,0,8);
+	}
+	return(${timestamp_8_datetime});
+}
+
+sub convdate_cuprodigy_message_to_timestamp_8{
+   my($cuprodigy_message_date)=@_;
+   my($timestamp_8_date);
+   	if    ($cuprodigy_message_date =~ /^\d{4}-\d{2}-\d{2}$/){
+		$cuprodigy_message_date.="T00:00:00-00:00";
+   	}elsif($cuprodigy_message_date =~ /^\d{4}-\d{2}-\d{2}-\d{2}:\d{2}$/){
+		$cuprodigy_message_date=~s/-\d{2}:\d{2}$/T00:00:00$&/;
+	}else{
+		$cuprodigy_message_date.="";
+	}
+   	if(${cuprodigy_message_date} !~ /^\d{4}-\d{2}-\d{2}[^\d]/){
+   		$timestamp_8_date="";
+	}else{
+   		$timestamp_8_date=${cuprodigy_message_date};
+   		$timestamp_8_date=~s/[-:T]//g;
+		$timestamp_8_date=substr($timestamp_8_date,0,8);
+	}
+	return(${timestamp_8_date});
+}
+
+sub convdate_cuprodigy_message_to_timestamp_14{
+   my($cuprodigy_message_date)=@_;
+   my($timestamp_8_date);
+   my($fill_hhmmss)="000000";
+   	if    ($cuprodigy_message_date =~ /^\d{4}-\d{2}-\d{2}$/){
+		$cuprodigy_message_date.="T00:00:00-00:00";
+   	}elsif($cuprodigy_message_date =~ /^\d{4}-\d{2}-\d{2}-\d{2}:\d{2}$/){
+		$cuprodigy_message_date=~s/-\d{2}:\d{2}$/T00:00:00$&/;
+	}else{
+		$cuprodigy_message_date.="";
+	}
+   	if(${cuprodigy_message_date} !~ /^\d{4}-\d{2}-\d{2}[^\d]/){
+   		$timestamp_8_date="";
+	}else{
+   		$timestamp_8_date=${cuprodigy_message_date};
+   		$timestamp_8_date=~s/[-:T]//g;
+		$timestamp_8_date=substr($timestamp_8_date,0,8);
+	}
+	return(${timestamp_8_date}.${fill_hhmmss});
+}
+
+sub convdatetime_dms_postgres_to_timestamp_14{
+   my($dms_postgres_datetime)=@_;
+   my($timestamp_14_datetime);
+	if(${dms_postgres_datetime} =~ /^\d{8}/){
+		$dms_postgres_datetime=~s/^..../$&-/;
+		$dms_postgres_datetime=~s/^....-../$&-/;
+	}
+   	if(${dms_postgres_datetime} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/){
+   		$timestamp_14_datetime="";
+	}else{
+   		$timestamp_14_datetime=${dms_postgres_datetime};
+   		$timestamp_14_datetime=~s/[-: ]//g;
+	}
+	return(${timestamp_14_datetime});
+}
+
+sub convdatetime_dms_postgres_to_timestamp_8{
+   my($dms_postgres_datetime)=@_;
+   my($timestamp_14_datetime);
+   my($timestamp_8_datetime);
+	$timestamp_14_datetime=&convdatetime_dms_postgres_to_timestamp_14(${dms_postgres_datetime});
+	if(${timestamp_14_datetime} ne ""){ 
+		$timestamp_8_datetime=substr($timestamp_14_datetime,0,8);
+	}
+	return(${timestamp_8_datetime});
+}
+
+sub convdate_timestamp_8_to_cuprodigy_message{
+   my($timestamp_8_date)=@_;
+   my($cuprodigy_message_date);
+   my($timezone_offset)="";
+   my(@f);
+	if($timestamp_8_date !~ /^\d{8}$/){
+		$cuprodigy_message_date="";
+	}else{
+		$cuprodigy_message_date=
+			substr($timestamp_8_date,0,4)."-".
+			substr($timestamp_8_date,4,2)."-".
+			substr($timestamp_8_date,6,2).
+			${timezone_offset};
+	}
+	return(${cuprodigy_message_date});
+}
+
+sub convdatetime_timestamp_14_to_cuprodigy_message{
+   my($timestamp_14_datetime)=@_;
+   my($cuprodigy_message_datetime);
+   my($timezone_offset);
+   my(@f);
+	if($timestamp_14_datetime !~ /^\d{14}$/){
+		$cuprodigy_message_datetime="";
+	}else{
+		push(@f,substr($timestamp_14_datetime,12,2));	# Seconds
+		push(@f,substr($timestamp_14_datetime,10,2));	# Minutes
+		push(@f,substr($timestamp_14_datetime, 8,2));	# Hours
+		push(@f,substr($timestamp_14_datetime, 6,2));	# Day
+		push(@f,substr($timestamp_14_datetime, 4,2));	# Month
+		push(@f,substr($timestamp_14_datetime, 0,4));	# Year
+		$f[4]=sprintf("%.0f",$f[4]-1);
+		$f[5]=sprintf("%.0f",$f[5]-1900);
+		$timezone_offset=strftime("%z",@f,undef,undef,undef);
+		if($timezone_offset=~/^[+-]\d{4}$/){
+			$timezone_offset=~s/\d\d$/:$&/;
+		}else{
+			$timezone_offset="";
+		}
+		$cuprodigy_message_datetime=
+			substr(${timestamp_14_datetime},0,4).
+			"-".
+			substr(${timestamp_14_datetime},4,2).
+			"-".
+			substr(${timestamp_14_datetime},6,2).
+			"T".
+			substr(${timestamp_14_datetime},8,2).
+			":".
+			substr(${timestamp_14_datetime},10,2).
+			":".
+			substr(${timestamp_14_datetime},12,2).
+			".".
+			"000000".
+			${timezone_offset};
+	}
+	return(${cuprodigy_message_datetime});
+}
+
+sub convdatetime_timestamp_14_to_dms_postgres{
+   my($timestamp_14_datetime)=@_;
+   my($dms_postgres_datetime);
+   my($timezone_offset);
+	if($timestamp_14_datetime !~ /^\d{14}$/){
+		$dms_postgres_datetime="";
+	}else{
+		$dms_postgres_datetime=
+			substr(${timestamp_14_datetime},0,8).
+			" ".
+			substr(${timestamp_14_datetime},8,2).
+			":".
+			substr(${timestamp_14_datetime},10,2).
+			":".
+			substr(${timestamp_14_datetime},12,2);
+	}
+	return(${dms_postgres_datetime});
+}
+
+sub datetime_cuprodigy_message_to_dms_postgres{
+   my($cuprodigy_message_datetime)=@_;
+   my($dms_postgres_datetime);
+   	if(${cuprodigy_message_datetime} eq ""){
+   		$dms_postgres_datetime="19000101 00:00:00";
+	}else{
+   		$dms_postgres_datetime=${cuprodigy_message_datetime};
+   		$dms_postgres_datetime=~s/-//g;
+   		$dms_postgres_datetime=~s/T/ /;
+		$dms_postgres_datetime=~s/\..*$//;
+	}
+	return($dms_postgres_datetime);
+}
+
+sub datetime_dms_postgres_to_cuprodigy_message{
+   my($dms_postgres_datetime)=@_;
+   my($cuprodigy_message_datetime);
+	if($dms_postgres_datetime=~/^\d{8}/){
+   		$dms_postgres_datetime=~s/^\d{4}/$&-/;
+   		$dms_postgres_datetime=~s/^\d{4}-\d{2}/$&-/;
+	}
+	if($dms_postgres_datetime=~/^\d{4}-\d{2}-\d{2}/){
+		if($dms_postgres_datetime!~/^\d{4}-\d{2}-\d{2} /){
+			$dms_postgres_datetime=~s/^\d{4}-\d{2}-\d{2}/$& /;
+		}
+	}
+	if($dms_postgres_datetime!~/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/){
+		$dms_postgres_datetime.="00:00:00";
+	}
+	if($dms_postgres_datetime=~/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/){
+   		$cuprodigy_message_datetime=${dms_postgres_datetime};
+   		$cuprodigy_message_datetime=~s/ /T/;
+   		$cuprodigy_message_datetime.".000000";
+	}
+	return(${cuprodigy_message_datetime});
+}
+
+sub validate_Body_message_error_RS{
+   my($post_request_parallel_options)=@_;
+   my($rtrn);
+   my($CUPRODIGY_USES_SOAP_HEADER)=0;
+   my($prior_MESSAGEDIGEST);
+   my($parallel_seq_std_id);
+	$parallel_seq_std_id=(&post_request_parallel_options_split(${post_request_parallel_options}))[1];
+	if    ($XML_DATA_BY_TAG_INDEX{${XML_KEY_HAS_SOAP}} eq ""){
+		$rtrn="Undefined SOAP Envelope.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_HAS_SOAP_HEADER}} eq "" and ${CUPRODIGY_USES_SOAP_HEADER}){
+		$rtrn="Undefined SOAP Envelope Header.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_HAS_SOAP_BODY}} eq ""){
+		$rtrn="Undefined SOAP Envelope Body.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse"} eq ""){
+		$rtrn="Undefined body <submitMessageResponse> value.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return"} eq ""){
+		$rtrn="Undefined body <submitMessageResponse><return> value.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response"} eq ""){
+		if($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE}} eq ""){
+			$rtrn="Undefined body <submitMessageResponse><return><response> value.";
+		}else{
+			$rtrn="Failure in XML body <submitMessageResponse> where ".
+				"<return>='".&message_error_sanitize($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE}})."'".	# 2017-05-16 -- An undocumented abnormality of the CUProdigy interface failure.
+				".";
+		}
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"error",${XML_SINGLE}} !~ /^\s*$/){
+		$rtrn="Failure in XML body <submitMessageResponse><return><response> where ".
+			"<error>='".&message_error_sanitize($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"error",${XML_SINGLE}})."'".
+			".";
+	}
+	return(${rtrn});
+}
+
+sub validate_Body_message_transaction_RS{
+   my($post_request_parallel_options,$error_location)=@_;
+   my($rtrn,$rtrn_optional_simple_status);
+   my($CUPRODIGY_USES_SOAP_HEADER)=0;
+   my($response_tag_attrs,$expect_requestid,$expect_typeofrequest);
+	$parallel_seq_std_id=(&post_request_parallel_options_split(${post_request_parallel_options}))[1];
+	if    ($XML_DATA_BY_TAG_INDEX{${XML_KEY_HAS_SOAP}} eq ""){
+		$rtrn="Undefined SOAP Envelope.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_HAS_SOAP_HEADER}} eq "" and ${CUPRODIGY_USES_SOAP_HEADER}){
+		$rtrn="Undefined SOAP Envelope Header.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_HAS_SOAP_BODY}} eq ""){
+		$rtrn="Undefined SOAP Envelope Body.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse"} eq ""){
+		$rtrn="Undefined body <submitMessageResponse> value.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return"} eq ""){
+		$rtrn="Undefined body <submitMessageResponse><return> value.";
+	}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response"} eq ""){
+		if($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE}} eq ""){
+			$rtrn="Undefined body <submitMessageResponse><return><response> value.";
+		}else{
+			$rtrn="Failure in XML body <submitMessageResponse> where ".
+				"<return>='".&message_error_sanitize($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE}})."'".	# 2017-05-16 -- An undocumented abnormality of the CUProdigy interface failure.
+				".";
+		}
+	}
+	$GLOB__XML_RESPONSE_VERIFICATION__FAILURE__TRANSACTION_TYPE=0;
+	if(${rtrn} eq ""){
+		if    ($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction"} eq ""){
+			$rtrn="Undefined body <submitMessageResponse><return><response><transaction> value.";
+		}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"type"} eq "" and ${error_location} eq ""){
+			$rtrn="Undefined body <submitMessageResponse><return><response><transaction><type> value.";
+		}elsif(${error_location} eq "code+message"){
+			$rtrn=$XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"message",${XML_SINGLE}};
+			if($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"code",${XML_SINGLE}} eq "000" and $rtrn =~ /^\s*NO ERROR\s*$/i){
+				$rtrn="";
+			}
+			$rtrn_optional_simple_status=${rtrn};	# See related $CTRL__METHOD__TRANSFER__MESSAGE_RESPONSE_STATUS__IS_NORMAL
+		}elsif(${error_location} eq "error|file"){
+			$rtrn=&message_error_sanitize($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"error",${XML_SINGLE}});
+			$rtrn_optional_simple_status=${rtrn};	# See related $CTRL__METHOD__TRANSFER__MESSAGE_RESPONSE_STATUS__IS_NORMAL
+			if(${rtrn} eq "" and $XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"file"} eq ""){
+				$rtrn="Failure in XML body <submitMessageResponse><return><response><transaction> where ".
+					"<file> tag does not exist when had requested ".
+					"<type>='".&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type")."'.";
+			}
+		}else{
+			if($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"type",${XML_SINGLE}} ne &message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type")){
+				$rtrn="Failure in XML body <submitMessageResponse><return><response><transaction> where ".
+					"<type>='".&message_error_sanitize($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"type",${XML_SINGLE}})."' ".
+					"instead of ".
+					"<type>='".&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type")."'.";
+			}
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"del","transaction:type");	# Always clear (delete) a value after it has been used.
+		$GLOB__XML_RESPONSE_VERIFICATION__FAILURE__TRANSACTION_TYPE=( ${rtrn} eq "" ? 0 : 1 );
+	}
+	$GLOB__XML_RESPONSE_VERIFICATION__FAILURE__TRANSACTION_REQUESTID=0;
+	if(${rtrn} eq ""){
+		if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+			if    ($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"requestId"} eq ""){
+				$rtrn="Undefined body <submitMessageResponse><return><response><transaction><requestId> value.";
+			}elsif($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"requestId",${XML_SINGLE}} ne &message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId")){
+				$rtrn="Failure in XML body <submitMessageResponse><return><response><transaction> where ".
+						"<requestId>='".&message_error_sanitize($XML_DATA_BY_TAG_INDEX{${XML_KEY_SOAP_BODY},"submitMessageResponse",${XML_SINGLE},"return",${XML_SINGLE},"response",${XML_SINGLE},"transaction",${XML_SINGLE},"requestId",${XML_SINGLE}})."' ".
+						"instead of ".
+						"<requestId>='".&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId")."'.";
+			}
+			&message_xml_use_xml_response_verification(${post_request_parallel_options},"del","transaction:requestId");	# Always clear (delete) a value after it has been used.
+			$GLOB__XML_RESPONSE_VERIFICATION__FAILURE__TRANSACTION_REQUESTID=( ${rtrn} eq "" ? 0 : 1 );
+		}
+	}
+	if(!${CTRL__METHOD__TRANSFER__MESSAGE_RESPONSE_STATUS__IS_NORMAL}){
+		return(${rtrn});
+	}else{
+		return(${rtrn},${rtrn_optional_simple_status});
+	}
+}
+
+sub ValidatePassword{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="ValidatePassword";
+	$method.="\n".join(" / ","MB",${request_membernumber},${initial_password});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"ValidatePassword",${request_membernumber},${initial_password});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"ValidatePassword","begin"),
+				&message_xml_Request_ValidatePassword(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${initial_password}),
+				&message_xml(${SOAP_URI_NS},"ValidatePassword","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub Inquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password,$cutoff,$plastic_cards)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="Inquiry";
+	$method.="\n".join(" / ","MB",${request_membernumber},${initial_password},${cutoff});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"Inquiry",${request_membernumber},${initial_password});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"Inquiry","begin"),
+				&message_xml_Request_Inquiry(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${initial_password},${cutoff},${plastic_cards}),
+				&message_xml(${SOAP_URI_NS},"Inquiry","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub AccountInquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password,$plastic_cards)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="AccountInquiry";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"AccountInquiry",${request_membernumber},${initial_password});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"AccountInquiry","begin"),
+				&message_xml_Request_AccountInquiry(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${initial_password},${plastic_cards}),
+				&message_xml(${SOAP_URI_NS},"AccountInquiry","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub AccountDetailInquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password,$single_dp_ln,$single_member,$single_account,$single_cert,$cutoff)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="AccountDetailInquiry";
+	$method.="\n".join(" / ","MB",${request_membernumber},${single_dp_ln},${single_member},${single_account},${single_cert},${cutoff});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"AccountDetailInquiry",${request_membernumber},${initial_password});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"AccountDetailInquiry","begin"),
+				&message_xml_Request_AccountDetailInquiry(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${initial_password},${single_dp_ln},${single_member},${single_account},${single_cert},${cutoff}),
+				&message_xml(${SOAP_URI_NS},"AccountDetailInquiry","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub GetMemberRelatedAccounts{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="GetMemberRelatedAccounts";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"GetMemberRelatedAccounts",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"GetMemberRelatedAccounts","begin"),
+				&message_xml_Request_GetMemberRelatedAccounts(${post_request_parallel_options},${request_membernumber},${request_memberpwd}),
+				&message_xml(${SOAP_URI_NS},"GetMemberRelatedAccounts","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub GetMemberAutoEnrollInfo{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="GetMemberAutoEnrollInfo";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"GetMemberAutoEnrollInfo",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"GetMemberAutoEnrollInfo","begin"),
+				&message_xml_Request_GetMemberAutoEnrollInfo(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${initial_password}),
+				&message_xml(${SOAP_URI_NS},"GetMemberAutoEnrollInfo","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub CrossAccountAuthority{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="CrossAccountAuthority";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"CrossAccountAuthority",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"CrossAccountAuthority","begin"),
+				&message_xml_Request_CrossAccountAuthority(${post_request_parallel_options},${request_membernumber},${request_memberpwd}),
+				&message_xml(${SOAP_URI_NS},"CrossAccountAuthority","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub EStatementActivation{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="EStatementActivation";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"EStatementActivation",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"EStatementActivation","begin"),
+				&message_xml_Request_EStatementActivation(${post_request_parallel_options},${request_membernumber},${request_memberpwd}),
+				&message_xml(${SOAP_URI_NS},"EStatementActivation","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub GetETOC{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="GetETOC";
+	$method.="\n".join(" / ","MB",${request_membernumber},${yyyy_mm});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"GetETOC",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"GetETOC","begin"),
+				&message_xml_Request_GetETOC(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${yyyy_mm}),
+				&message_xml(${SOAP_URI_NS},"GetETOC","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub GetStatement{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$yyyy_mm)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="GetStatement";
+	$method.="\n".join(" / ","MB",${request_membernumber},${yyyy_mm});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"GetStatement",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"GetStatement","begin"),
+				&message_xml_Request_GetStatement(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${yyyy_mm}),
+				&message_xml(${SOAP_URI_NS},"GetStatement","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub LoanApplication{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$composit_data_xml,%data_composit_assoc_array)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="LoanApplication";
+	$method.="\n".join(" / ","MB",${request_membernumber},${composit_data_xml});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"LoanApplication",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"LoanApplication","begin"),
+				&message_xml_Request_LoanApplication(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${composit_data_xml},%data_composit_assoc_array),
+				&message_xml(${SOAP_URI_NS},"LoanApplication","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub LoanApplicationStatus{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$loanappid)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="LoanApplicationStatus";
+	$method.="\n".join(" / ","MB",${request_membernumber},${loanappid});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"LoanApplicationStatus",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"LoanApplicationStatus","begin"),
+				&message_xml_Request_LoanApplicationStatus(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${loanappid}),
+				&message_xml(${SOAP_URI_NS},"LoanApplicationStatus","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub GetVendorLoanTypes{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="GetVendorLoanTypes";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"GetVendorLoanTypes",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"GetVendorLoanTypes","begin"),
+				&message_xml_Request_GetVendorLoanTypes(${post_request_parallel_options},${request_membernumber},${request_memberpwd}),
+				&message_xml(${SOAP_URI_NS},"GetVendorLoanTypes","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub AccountTransfer{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="AccountTransfer";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	if    (${from_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${from_request_membernumber},${from_dp_or_ln},"0");
+	}elsif(${from_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${from_request_membernumber},${from_dp_or_ln});
+	}elsif(${from_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${from_request_membernumber},${from_dp_or_ln});
+	}
+	if    (${to_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${to_request_membernumber},${to_dp_or_ln},"0");
+	}elsif(${to_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${to_request_membernumber},${to_dp_or_ln});
+	}elsif(${to_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${to_request_membernumber},${to_dp_or_ln});
+	}
+	$method.="\n".${amount};
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"AccountTransfer",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"AccountTransfer","begin"),
+				&message_xml_Request_AccountTransfer(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo}),
+				&message_xml(${SOAP_URI_NS},"AccountTransfer","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub LoanPayment{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="LoanPayment";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	if    (${from_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${from_request_membernumber},${from_dp_or_ln},"0");
+	}elsif(${from_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${from_request_membernumber},${from_dp_or_ln});
+	}elsif(${from_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${from_request_membernumber},${from_dp_or_ln});
+	}
+	if    (${to_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${to_request_membernumber},${to_dp_or_ln},"0");
+	}elsif(${to_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${to_request_membernumber},${to_dp_or_ln});
+	}elsif(${to_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${to_request_membernumber},${to_dp_or_ln});
+	}
+	$method.="\n".${amount};
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"LoanPayment",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"LoanPayment","begin"),
+				&message_xml_Request_LoanPayment(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo}),
+				&message_xml(${SOAP_URI_NS},"LoanPayment","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub LoanAddon{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="LoanAddon";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	if    (${from_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${from_request_membernumber},${from_dp_or_ln},"0");
+	}elsif(${from_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${from_request_membernumber},${from_dp_or_ln});
+	}elsif(${from_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${from_request_membernumber},${from_dp_or_ln});
+	}
+	if    (${to_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${to_request_membernumber},${to_dp_or_ln},"0");
+	}elsif(${to_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${to_request_membernumber},${to_dp_or_ln});
+	}elsif(${to_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${to_request_membernumber},${to_dp_or_ln});
+	}
+	$method.="\n".${amount};
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"LoanAddon",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"LoanAddon","begin"),
+				&message_xml_Request_LoanAddon(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo}),
+				&message_xml(${SOAP_URI_NS},"LoanAddon","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub CheckWithdrawal{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="CheckWithdrawal";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	if    (${from_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${from_request_membernumber},${from_dp_or_ln},"0");
+	}elsif(${from_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${from_request_membernumber},${from_dp_or_ln});
+	}elsif(${from_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${from_request_membernumber},${from_dp_or_ln});
+	}
+	if    (${to_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${to_request_membernumber},${to_dp_or_ln},"0");
+	}elsif(${to_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${to_request_membernumber},${to_dp_or_ln});
+	}elsif(${to_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${to_request_membernumber},${to_dp_or_ln});
+	}
+	$method.="\n".${amount};
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"CheckWithdrawal",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"CheckWithdrawal","begin"),
+				&message_xml_Request_CheckWithdrawal(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo}),
+				&message_xml(${SOAP_URI_NS},"CheckWithdrawal","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub CheckWithdrawalLoan{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="CheckWithdrawalLoan";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	if    (${from_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${from_request_membernumber},${from_dp_or_ln},"0");
+	}elsif(${from_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${from_request_membernumber},${from_dp_or_ln});
+	}elsif(${from_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${from_request_membernumber},${from_dp_or_ln});
+	}
+	if    (${to_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${to_request_membernumber},${to_dp_or_ln},"0");
+	}elsif(${to_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${to_request_membernumber},${to_dp_or_ln});
+	}elsif(${to_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${to_request_membernumber},${to_dp_or_ln});
+	}
+	$method.="\n".${amount};
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"CheckWithdrawalLoan",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"CheckWithdrawalLoan","begin"),
+				&message_xml_Request_CheckWithdrawalLoan(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo}),
+				&message_xml(${SOAP_URI_NS},"CheckWithdrawalLoan","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub CreditCardPayment{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="CreditCardPayment";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	if    (${from_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${from_request_membernumber},${from_dp_or_ln},"0");
+	}elsif(${from_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${from_request_membernumber},${from_dp_or_ln});
+	}elsif(${from_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${from_request_membernumber},${from_dp_or_ln});
+	}
+	if    (${to_dplncc} eq "DP"){
+		$method.="\n".join(" / ","DP",${to_request_membernumber},${to_dp_or_ln},"0");
+	}elsif(${to_dplncc} eq "LN"){
+		$method.="\n".join(" / ","LN",${to_request_membernumber},${to_dp_or_ln});
+	}elsif(${to_dplncc} eq "CC"){
+		$method.="\n".join(" / ","CC",${to_request_membernumber},${to_dp_or_ln});
+	}
+	$method.="\n".${amount};
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"CreditCardPayment",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"CreditCardPayment","begin"),
+				&message_xml_Request_CreditCardPayment(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo}),
+				&message_xml(${SOAP_URI_NS},"CreditCardPayment","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub UpdateInfo{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,@values)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="UpdateInfo";
+	$method.="\n".join(" / ","MB",${request_membernumber});	# Needed for clarity of authorizing member; the TRN request is not XJO/Overloaded ("@") encoded (which would have to be decoded in message_xml_Request_Transfer() using split_dms_xjo_overloaded_composit()); I have decided to including the "MB" value consistantly, reguardless of if $CONF__XJO__USE and $CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES are enabled or not.
+	$method.="\n".join(" / ",@values);
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"UpdateInfo",${request_membernumber},${from_dplncc},${from_request_membernumber},${from_dp_or_ln},${to_dplncc},${to_request_membernumber},${to_dp_or_ln},${amount},${optional_memo});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"UpdateInfo","begin"),
+				&message_xml_Request_UpdateInfo(${post_request_parallel_options},${request_membernumber},${request_memberpwd},@values),
+				&message_xml(${SOAP_URI_NS},"UpdateInfo","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub CardInquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$plastic_card_pan)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="CardInquiry";
+	$method.="\n".join(" / ","MB",${request_membernumber},${plastic_card_pan});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"CardInquiry",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"CardInquiry","begin"),
+				&message_xml_Request_CardInquiry(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${plastic_card_pan}),
+				&message_xml(${SOAP_URI_NS},"CardInquiry","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+sub ChangeCardStatus{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$plastic_card_pan,$enable_plastic_card)=@_;
+   my($method,@xml,$mode);
+   my($parallel_mode,$parallel_seq_std_id)=("","");
+   my($curr_messagedigest);
+	$method="ChangeCardStatus";
+	$method.="\n".join(" / ","PC",${request_membernumber},${plastic_card_pan});	# Optional describer for internal usage by post_request()
+	($parallel_mode,$parallel_seq_std_id)=&post_request_parallel_options_split(${post_request_parallel_options});
+	if($parallel_mode eq "get"){
+		if($CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"} eq ${method}){
+			$xml[0]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"};
+			$xml[1]=$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"};
+		}
+	}else{
+		for($mode=0;$mode<=1;$mode++){
+			&message_xml__mode_setup(${mode},"ChangeCardStatus",${request_membernumber});
+			$xml[${mode}]=join("",
+				&soap_like_envelope("begin"),
+				&soap_like_envelope_header("begin"),
+				&soap_like_envelope_header("end"),
+				&soap_like_envelope_data("begin"),
+				&message_xml(${SOAP_URI_NS},"ChangeCardStatus","begin"),
+				&message_xml_Request_ChangeCardStatus(${post_request_parallel_options},${request_membernumber},${request_memberpwd},${plastic_card_pan},${enable_plastic_card}),
+				&message_xml(${SOAP_URI_NS},"ChangeCardStatus","end"),
+				&soap_like_envelope_data("end"),
+				&soap_like_envelope("end")
+			).${SOAP_XML_EOL};
+		}
+		if($parallel_mode eq "put"){
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"METHOD"}=${method};
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML0"}=$xml[0];
+			$CACHE__POST_REQUEST_PARALLEL{${parallel_seq_std_id},"XML1"}=$xml[1];
+		}
+	}
+	return(${method},$xml[0],$xml[1]);
+}
+
+1;

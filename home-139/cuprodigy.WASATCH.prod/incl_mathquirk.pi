@@ -1,0 +1,261 @@
+# File: /home/dms/incl_mathquirk.pi (AMI)
+# From: Gary Jay Peters  @  DMS
+# Date: 2002-07-30
+
+# ==========================================================================
+# ==========  COPYRIGHT BY                                        ==========
+# ==========  Database Management Services, Inc. / HomeCU         ==========
+# ==========  Boise, Idaho                                        ==========
+# ==========  July 30th 2002                                      ==========
+# ==========================================================================
+
+# After the inclusion ('do "incl_mathquirk.pi";'), issue the command:
+#	die("${0}: Failure in: math_quirk__tests_ok()\n")
+#		if ! &math_quirk__tests_ok();
+
+sub math_quirk__set__method{
+	$math_quirk__perl_vers="$]";
+	$math_quirk__os=`uname`;
+	$math_quirk__os=~s/[\r\n][\r\n]*$//;
+	$math_quirk__os=~s/^\s\s*//;
+	$math_quirk__os=~s/\s.*$//;
+	$math_quirk__os=~tr/a-z/A-Z/;
+	if    ($math_quirk__os =~ /^AIX/){
+		$math_quirk__os="AIX";
+		if($math_quirk__perl_vers < 5){
+			$math_quirk__method="A";
+		}else{
+			$math_quirk__method="B";
+		}
+	}elsif($math_quirk__os =~ /^LINUX/){
+		$math_quirk__os="LINUX";
+		if($math_quirk__perl_vers < 5){
+			die("${0}: Perl version ${math_quirk__perl_vers} not mapped in math_quirk__set_method()\n");
+		}else{
+			$math_quirk__method="B";
+		}
+	}elsif($math_quirk__os =~ /^SCO/){
+		$math_quirk__os="SCO";
+		if($math_quirk__perl_vers < 5){
+			die("${0}: Perl version ${math_quirk__perl_vers} not mapped in math_quirk__set_method()\n");
+		}else{
+			$math_quirk__method="B";
+		}
+	}else{
+		$math_quirk__os="UNKNOWN";
+		die("${0}: Unknown O/S in math_quirk__set_method()\n");
+	}
+}
+
+sub math_quirk__tests_ok{
+   local($rtrn)=1;
+   local($amt_000,$amt_100);
+   local($int_status);
+   local(@before)=("579.66","579.66001","579.67","156.20","70.99");
+   local(@after)=("57966","57966","57967","15620","7099");
+   local(@is_int)=("1","0","1","1","1");
+	for($idx=0;$idx<=$#before;$idx++){
+		$amt_000=$before[$idx];
+		$amt_100=&math_quirk__decimals(${amt_000}*100,0);
+		$int_status=&math_quirk__is_int(${amt_000}*100);
+		if($amt_100 ne $after[$idx]){
+			print STDERR "Value '$before[$idx]' * 100 becomes '$amt_100' which 'NE' expected '$after[$idx]'.\n";
+			$rtrn=0;
+		}elsif($amt_100 != $after[$idx]){
+			print STDERR "Value $before[$idx] * 100 becomes $amt_100 which '!=' expected $after[$idx].\n";
+			$rtrn=0;
+		}elsif($int_status != $is_int[$idx]){
+			print STDERR "math_quirk__is_int($before[$idx] * 100) should return $is_int[$idx], but instead returns $int_status.\n";
+			$rtrn=0;
+		}
+	}
+	return($rtrn);
+}
+
+sub math_quirk__int{
+   local($value)=@_;
+   local($idx);
+	# +--[ PROBLEM WITH PERL NUMBERS / 2002-07-16 / GJP @ DMS ]-----------+
+	# |                                                                   |
+	# | I have been using INT() (as instructed by the PERL manual) to     |
+	# | guarantee that the value I end up with is integral.  But I have   |
+	# | discovered that INT() does not always return the value expected.  |
+	# |                                                                   |
+	# | I theorize that PERL keeps two values for each variable; the      |
+	# | character string form (documented) and a numeric equivalent (not  |
+	# | documented).  A character string may be "12345", but the numeric  |
+	# | equivalent may be 12344.99997 or 12345.00001.                     |
+	# |                                                                   |
+	# | Some things use the character string value; like string operators |
+	# | ("EQ", "NE", and "."), PRINT, and PRINTF("%s").  While others use |
+	# | the numeric equivalent value; like numeric operators ("==", "!=", |
+	# | and "++"), INT(), PRINTF("%d"), and PRINTF("%.2f").               |
+	# |                                                                   |
+	# | For example, on AIX Perl 4.018 and SCO Perl 5.001, the code:      |
+	# |     $amt = "579.67";                                              |
+	# |     ($val4 = $amt)=~s/\.//;                                       |
+	# |     $val5 = $amt * 100;                                           |
+	# |     if($val4 eq $val5){ $cmpS="EQ"; }else{ $cmpS="NE"; }          |
+	# |     if($val4 == $val5){ $cmpN="=="; }else{ $cmpN="!="; }          |
+	# |     print "SAME: $val4 $cmpS $val5\n";                            |
+	# |     printf "SAME: %.3f %.3f\n",$val4,$val5;                       |
+	# |     print "DIFF: $val4 $cmpN $val5\n";                            |
+	# |     print "DIFF: ",int($val4)," ",int($val5),"\n";                |
+	# |     printf "DIFF: %d %d\n",$val4,$val5);                          |
+	# | produces the result:                                              |
+	# |     SAME: 57967 EQ 57967                                          |
+	# |     SAME: 57967.000 57967.000                                     |
+	# |     DIFF: 57967 != 57967                                          |
+	# |     DIFF: 57967 57966                                             |
+	# |     DIFF: 57967 57966                                             |
+	# |                                                                   |
+	# | This probably occurs because, even though the character string    |
+	# | value of $val4 was calculated as "57967", the numeric equivalent  |
+	# | was calculated to something like 57966.99997.  Hence, the numeric |
+	# | operator "==" could tell the difference; and both INT() and       |
+	# | PRINTF("%d") rounded down the numeric equivalent value.           |
+	# |                                                                   |
+	# | To resolve the problem, replace usage of numeric function INT()   |
+	# | with:                                                             |
+	# |   *  SPRINTF("%.0f") when performing math which should be         |
+	# |      resulting in integral values; it produces the expected       |
+	# |      numeric value, and has no "." character appended after       |
+	# |      the end of the character string value.                       |
+	# |   *  INT() when performing math which should be resulting         |
+	# |      in non-integral values, and for which you want the           |
+	# |      result rounded down.                                         |
+	# |   *  &math_quirk__int() within a routine for which you are        |
+	# |      uncertain what the origin of the numeric variable is;        |
+	# |      or use &math_quirk__is_int() to determine if the             |
+	# |      character string value is integral.                          |
+	# |                                                                   |
+	# +-------------------------------------------------------------------+
+	if(${math_quirk__method} eq ""){
+		&math_quirk__set__method();
+	}
+	if    ($math_quirk__method eq "A"){
+		# CHARACTERISTIC -- Even the character string is quirked.
+		# Since character string is also wrong (at least for AIX
+		# Perl 4.018), check for excessive "9"s after the decimal
+		# point, and then add a small (but large enough) amount
+		# so that the INT() result will be correct.
+		if($value =~ /\.9999*[0-9]$/){
+			int($value + 0.0001);
+		}else{
+			int($value);
+		}
+	}elsif($math_quirk__method eq "B"){
+		# CHARACTERISTIC -- The character string is correct.
+		$idx=index($value,".");		# Force char str usage
+		if($idx >= $[){
+			# Force usage of character string value by using	
+			# SUBSTR() to strip everything after and including the
+			# ".", and then use INT() to force PERL to re-interpret
+			# the numeric value from the character string.
+			int( substr( $value , $[ , $idx - $[ ) );
+		}else{
+			# Force usage of character string value by using
+			# quotes, and then use INT() to force PERL to
+			# re-interpret the numeric value from the character
+			# string.
+			int( "$value " );
+		}
+	}else{
+		# Otherwise -- Do a simple SPRINTF("%.0f")
+		sprintf("%.0f",@_);	# int($_[0])
+	}
+}
+
+sub math_quirk__is_int{
+   local($value)=@_;
+   local($idx);
+	# +--[ PROBLEM WITH PERL NUMBERS / 2002-07-16 / GJP @ DMS ]-----------+
+	# |                                                                   |
+	# | See routine "math_quirk__int()" for why this routines exists.     |
+	# |                                                                   |
+	# | Where you might have coded something like:                        |
+	# |     if(${month} == int(${month})){                                |
+	# |         .                                                         |
+	# |         .                                                         |
+	# |     }                                                             |
+	# | Replace with:                                                     |
+	# |     if(&math_quirk__is_int(${month})){                            |
+	# |         .                                                         |
+	# |         .                                                         |
+	# |     }                                                             |
+	# |                                                                   |
+	# | To see an example what this routine picks off, try this code:     |
+	# |     $value = "579.67";                                            |
+	# |     $value = $value * 100;                                        |
+	# |     print "STRING: ",$value,"\n";                                 |
+	# |     print "NUMBER: ",sprintf("%d",$value),"\n";                   |
+	# |     print "IS INT: ",&math_quirk__is_int($value),"\n";            |
+	# |     print "ACTUAL: ",&math_quirk__int($value),"\n";               |
+	# | it should produce the results:                                    |
+	# |     STRING: 57967                                                 |
+	# |     NUMBER: 57966                                                 |
+	# |     IS INT: 1                                                     |
+	# |     ACTUAL: 57967                                                 |
+	# |                                                                   |
+	# +-------------------------------------------------------------------+
+	if(${math_quirk__method} eq ""){
+		&math_quirk__set__method();
+	}
+	if    ($math_quirk__method eq "A"){
+		# CHARACTERISTIC -- Even the character string is quirked.
+		$idx=index($value,".");		# Force char str usage
+		if($idx < $[){
+			1;	# No "." in character string, so is integral.
+		}else{
+			$value=substr($value,$idx + 1);
+			$value=~s/[^0-9].*$//;
+			if($value=~/^9999*[0-9]$/ || $value=~/^00*$/ || $value=~/^0000*[0-9]$/){
+				1;
+			}else{
+				0;
+			}
+		}
+	}elsif($math_quirk__method eq "B"){
+		# CHARACTERISTIC -- The character string is correct.
+		$idx=index($value,".");		# Force char str usage
+		if($idx < $[){
+			1;	# No "." in character string, so is integral.
+		}else{
+			$value=substr($value,$idx + 1);
+			$value=~s/[^0-9].*$//;
+			if($value eq "" || $value=~/^00*$/){
+				1;	# Is integer followed by ".00*"
+			}else{
+				0;	# Is non-integer
+			}
+		}
+	}else{
+		# Otherwise -- Duplicate AIX Perl 4.018
+		$idx=index($value,".");		# Force char str usage
+		if($idx < $[){
+			1;	# No "." in character string, so is integral.
+		}else{
+			$value=substr($value,$idx + 1);
+			$value=~s/[^0-9].*$//;
+			if($value=~/^9999*[0-9]$/ || $value=~/^00*$/ || $value=~/^0000*[0-9]$/){
+				1;
+			}else{
+				0;
+			}
+		}
+	}
+}
+
+sub math_quirk__decimals{	# Just like decimals(), but decimals() does not necessarily exist.
+   local($value,$decimals)=@_;
+	# Must use int() or sprintf() to prevent PERL calculations like:
+	#	192.15 - 189.85 = 2.30000000000001
+	#	0 - 4.97 = -4.9699999999999998
+	if($decimals<=0){
+		&math_quirk__int($value);
+	}else{
+		sprintf("%.${decimals}f",$value);
+	}
+}
+
+1;

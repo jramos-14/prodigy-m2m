@@ -1,0 +1,294 @@
+# File: cuprodigy_soap_like.pi
+# Gary Jay Peters
+# 2008-01-21
+
+#
+# Alas, "SOAP::Lite" probably does not work well with CUProdigy for the same
+# reasons that it does not work well with Harland Financial Solutions or
+# CUSA/FiServ:
+#    *	Attributes; implemented "autotype()".
+#    *	Root Element (Envelope Body) and Method (POST SOAPAction); implemented
+#	"on_action()".
+#    *	Namespace prefixes; no solution; though have tried "use_prefix()",
+#	"ns()", and "default_ns()".
+#    *	Efficient filtering of NULL values (bulk edit raw XML); no solution.
+#
+# And there is always the concern that a different "SOAP::Lite" version will
+# not support all of the functionality of an older version.
+#
+# In the end, the need to micro-manage the "SOAP::Lite" serialization (to the
+# liking of CUProdigy) has resulted in the decision to fake it ourselves
+# (hence these "soap_like" (mutation of "SOAP::Lite") subroutines).
+#
+
+#
+# $SOAP_SERVER="10.0.254.28:19007";
+# $SOAP_HOST="http://${SOAP_SERVER}/ws/QIE";
+# $SOAP_URI_NS="";
+# &soap_like_post_header(${SOAP_SERVER},${SOAP_HOST},${SOAP_URI_NS},${method},${xml});
+#
+
+#
+# "POST /ws/QIE HTTP/1.1\r\n"
+# "User-Agent: curl/7.35.0\r\n"
+# "Host: 10.0.254.28:19007\r\n"
+# "Accept: */*\r\n"
+# "Content-Type: text/xml; charset=utf-8\r\n"
+# "SOAPAction: Inquiry\r\n"
+# "Content-Length: ${post_data_len}\r\n"
+#
+
+use Net::Telnet;
+
+sub soap_like_connection_open{
+   my($server,$port)=@_;
+   my($soap_like_connection);
+   my($timeout_connect);
+   my($max_buffer_length);
+	if    ($CONF__NET_TELNET__TIMEOUT{"new Net::Telnet"} =~ /^\d\d*$/){
+		$timeout_connect=$CONF__NET_TELNET__TIMEOUT{"new Net::Telnet"};
+	}elsif($CONF__NET_TELNET__TIMEOUT{""} =~ /^\d\d*$/){
+		$timeout_connect=$CONF__NET_TELNET__TIMEOUT{""};
+	}else{
+		$timeout_connect=5;
+	}
+	$max_buffer_length=sprintf("%.0f",1*1024*1024);
+	if(${max_buffer_length} < ${CONF__NET_TELNET__MAX_BUFFER_LENGTH}){ $max_buffer_length=${CONF__NET_TELNET__MAX_BUFFER_LENGTH}; }
+	$soap_like_connection=new Net::Telnet (
+		Binmode => 1 ,
+		Output_Record_Separator => "",
+		Input_Record_Separator => "\r",
+		Telnetmode => 0,
+		Timeout => ${timeout_connect},
+		Max_buffer_length => ${max_buffer_length}
+	);
+	$soap_like_connection->binmode(1);
+	if(!$soap_like_connection->open( Host => ${server} , Port => ${port} , Errmode => "return")){
+		return undef;
+	}
+	if($soap_like_connection){
+		if    ($CONF__NET_TELNET__TIMEOUT{""} =~ /^\d\d*$/){
+			$soap_like_connection->timeout($CONF__NET_TELNET__TIMEOUT{""});
+		}else{
+			$soap_like_connection->timeout(sprintf("%.0f",30-2));	# Set to 2 seconds less than the HomeCU's default apache ".mp" config "telnet_timeout" for Net::Telnet timeout configuration for HomeCU middleware to CUProdigy API
+		}
+		$soap_like_connection->max_buffer_length(${max_buffer_length});
+	}
+	if($soap_like_connection){
+		$soap_like_connection->errmode("return");
+		return($soap_like_connection);
+	}else{
+		return undef;
+	}
+}
+
+sub soap_like_connection_close{
+   my($soap_like_connection)=@_;
+	$soap_like_connection->close;
+}
+
+sub soap_like_connection_read{
+   my($soap_like_connection,$timeout,$action,$qualifier)=@_;
+   my($rtrn_data,$rtrn_status)=("","");
+   my($upto_char,$get_bytes);
+   my($prematch,$match);
+   my($read_bytes);
+   my($MAX_BYTES_PER_PASS)=4086;
+   	if($timeout eq ""){ undef($timeout); }	# To disable timer in Net::Telnet must use "Timeout => undef".
+	if    ($action =~ /^upto$/i){
+		$upto_char=${qualifier};
+		while($rtrn_data eq "" and !$soap_like_connection->eof){
+			($prematch,$match)=$soap_like_connection->waitfor(String => ${upto_char}, Timeout => ${timeout}, Binmode => 1 );
+			if(${prematch}.${match} eq "" and !$soap_like_connection->eof){ $rtrn_status="TIM"; }
+			$rtrn_data.=${prematch}.${match};
+		}
+		if($soap_like_connection->eof){ $rtrn_status="EOF"; }
+	}elsif($action =~ /^byte$/i or $action =~/^bytes$/i){
+		$get_bytes=${qualifier};
+		while(length(${rtrn_data}) < ${get_bytes} and !$soap_like_connection->eof and ${rtrn_status} ne "TIM"){
+			$need_bytes=sprintf("%.0f",${get_bytes}-length(${rtrn_data}));
+   			if(${MAX_BYTES_PER_PASS} < 1){
+				($prematch,$match)=$soap_like_connection->waitfor(Match => "/^[\\000-\\377]{${need_bytes}}/", Timeout => ${timeout}, Binmode => 1, Telnetmode => 0 );	# WARNING: Must pattern match with "/[\000-\377]/" because "/./" does not match the "\n" character.
+				if(${prematch}.${match} eq "" and !$soap_like_connection->eof){ $rtrn_status="TIM"; }
+			}else{
+				if(${need_bytes} > ${MAX_BYTES_PER_PASS}){ $need_bytes=sprintf("%.0f",${MAX_BYTES_PER_PASS}); }
+				($prematch,$match)=$soap_like_connection->waitfor(Match => "/^[\\000-\\377]{${need_bytes}}/", Timeout => ${timeout}, Binmode => 1, Telnetmode => 0 );	# WARNING: Must pattern match with "/[\000-\377]/" because "/./" does not match the "\n" character.
+				if(${prematch}.${match} eq "" and !$soap_like_connection->eof){ $rtrn_status="TIM"; }
+			}
+			$rtrn_data.=${prematch}.${match};
+		}
+		if($soap_like_connection->eof){ $rtrn_status="EOF"; }
+	}else{
+		$rtrn_status="Invalid action argument";
+	}
+	return(${rtrn_data},${rtrn_status});
+}
+
+sub soap_like_post_header{
+    my($server,$proxy_host,$uri_ns,$soap_action_ns,$method,$xml)=@_;
+    my($POST_HEADER_EOL)="\r\n";
+    my($post_header);
+    my($proxy_host_server,$proxy_host_path);
+    	$proxy_host_server=${proxy_host}; $proxy_host_server=~s/^[a-z][a-z]*:\/\///i; $proxy_host_server=~s/\/.*$//;
+    	$proxy_host_path=substr(${proxy_host},index($proxy_host,"://${proxy_host_server}")+length("://${proxy_host_server}"));
+    	$post_header="";
+    	$post_header.="POST ${proxy_host_path} HTTP/1.1".${POST_HEADER_EOL};
+    	$post_header.="Host: ${proxy_host_server}".${POST_HEADER_EOL};
+    	$post_header.="Content-Type: text/xml; charset=".${CTRL__CUPRODIGY_SERVER__CHARACTERSET__POST_HEADER}.${POST_HEADER_EOL};
+    	$post_header.="Content-Length: ".length(${xml}).${POST_HEADER_EOL};
+	# $post_header.="User-Agent: curl/7.35.0\r\n".${POST_HEADER_EOL}";
+	# $post_header.="Accept: */*\r\n".${POST_HEADER_EOL};
+	if(${soap_action_ns} eq ""){
+    		$post_header.="SOAPAction: ${method}".${POST_HEADER_EOL};
+	}else{
+    		$post_header.="SOAPAction: \"${soap_action_ns}/${method}\"".${POST_HEADER_EOL};
+	}
+    	$post_header.=${POST_HEADER_EOL};
+	return(${post_header});
+}
+
+sub soap_like_envelope{
+   my(@to_be_returned)=@_;
+   my(@rtrn);
+   my(%xml_code);
+    	$xml_code{"begin"}=
+		'<?xml version="1.0" encoding="'.${CTRL__CUPRODIGY_SERVER__CHARACTERSET__XML}.'"?>'.
+		"<".join(" ",
+			'soap:Envelope',
+			'xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"',
+			'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
+			'xmlns:xsd="http://www.w3.org/2001/XMLSchema"'
+		).">"
+	;
+    	$xml_code{"end"}=
+		"<".join(" ",
+			'/soap:Envelope'
+		).">"
+	;
+    	$xml_code{"empty"}=$xml_code{"begin"}.$xml_code{"end"};
+	while(@to_be_returned>0){
+		$to_be_returned[0]=~s/^{$/begin/; $to_be_returned[0]=~s/^}$/end/; $to_be_returned[0]=~s/^{}$/empty/;
+		$to_be_returned[0]=~tr/A-Z/a-z/;
+		push(@rtrn,$xml_code{$to_be_returned[0]});
+		shift(@to_be_returned);
+	}
+	push(@rtrn,$xml_code{"begin"},$xml_code{"end"},$xml_code{"empty"}) if @rtrn == 0;
+	return(@rtrn);
+}
+
+sub soap_like_envelope_header{
+   my(@to_be_returned)=@_;
+   my(@rtrn);
+   my(%xml_code);
+    	$xml_code{"begin"}=
+		"<".join(" ",
+			'soap:Header'
+		).">"
+	;
+    	$xml_code{"end"}=
+		"<".join(" ",
+			'/soap:Header'
+		).">"
+	;
+    	$xml_code{"empty"}=
+		"<".join(" ",
+			'soap:Header /'
+		).">"
+	;
+	while(@to_be_returned>0){
+		$to_be_returned[0]=~s/^{$/begin/; $to_be_returned[0]=~s/^}$/end/; $to_be_returned[0]=~s/^{}$/empty/;
+		$to_be_returned[0]=~tr/A-Z/a-z/;
+		push(@rtrn,$xml_code{$to_be_returned[0]});
+		shift(@to_be_returned);
+	}
+	push(@rtrn,$xml_code{"begin"},$xml_code{"end"},$xml_code{"empty"}) if @rtrn == 0;
+	return(@rtrn);
+}
+
+sub soap_like_envelope_data{
+   my(@to_be_returned)=@_;
+   my(@rtrn);
+   my(%xml_code);
+    	$xml_code{"begin"}=
+		"<".join(" ",
+			'soap:Body'
+		).">"
+	;
+    	$xml_code{"end"}=
+		"<".join(" ",
+			'/soap:Body'
+		).">"
+	;
+    	$xml_code{"empty"}=
+		"<".join(" ",
+			'soap:Body /'
+		).">"
+	;
+	while(@to_be_returned>0){
+		$to_be_returned[0]=~s/^{$/begin/; $to_be_returned[0]=~s/^}$/end/; $to_be_returned[0]=~s/^{}$/empty/;
+		$to_be_returned[0]=~tr/A-Z/a-z/;
+		push(@rtrn,$xml_code{$to_be_returned[0]});
+		shift(@to_be_returned);
+	}
+	push(@rtrn,$xml_code{"begin"},$xml_code{"end"},$xml_code{"empty"}) if @rtrn == 0;
+	return(@rtrn);
+}
+
+sub soap_like_xml_split{
+   my($soap_like_xml)=@_;
+   my($soap_like_xml_envelope,$soap_like_xml_header,$soap_like_xml_body);
+
+   	$soap_like_xml=~s/^[\s\r\n][\s\r\n]*//;
+   	$soap_like_xml=~s/[\s\r\n][\s\r\n]*$//;
+
+	if    ($soap_like_xml =~ /<soap[^:]*:envelope\/>/i){
+		$soap_like_xml_envelope=${&};
+	}elsif($soap_like_xml =~ /<soap[^:]*:envelope\s[^\/>]*\/>/i){
+		$soap_like_xml_envelope=${&};
+	}elsif($soap_like_xml =~ /<soap[^:]*:envelope>/i){
+		$soap_like_xml_envelope=${&}.${'};
+		if($soap_like_xml_envelope=~/<\/soap[^:]*:envelope>/){
+			$soap_like_xml_envelope=${`}.${&};
+		}
+	}elsif($soap_like_xml =~ /<soap[^:]*:envelope\s[^>]*>/i){
+		$soap_like_xml_envelope=${&}.${'};
+		if($soap_like_xml_envelope=~/<\/soap[^:]*:envelope>/){
+			$soap_like_xml_envelope=${`}.${&};
+		}
+	}
+
+	if    ($soap_like_xml_envelope =~ /<soap[^:]*:header\/>/i){
+		$soap_like_xml_header=${&};
+	}elsif($soap_like_xml_envelope =~ /<soap[^:]*:header\s[^\/>]*\/>/i){
+		$soap_like_xml_header=${&};
+	}elsif($soap_like_xml_envelope =~ /<soap[^:]*:header>/i){
+		$soap_like_xml_header=${&}.${'};
+		if($soap_like_xml_header =~ /<\/soap[^:]*:header>/i){
+			$soap_like_xml_header=${`}.${&};
+		}
+	}elsif($soap_like_xml_envelope =~ /<soap[^:]*:header\s[^>]*>/i){
+		$soap_like_xml_header=${&}.${'};
+		if($soap_like_xml_header =~ /<\/soap[^:]*:header>/i){
+			$soap_like_xml_header=${`}.${&};
+		}
+	}
+	
+	if    ($soap_like_xml_envelope =~ /<soap[^:]*:body\/>/i){
+		$soap_like_xml_body=${&};
+	}elsif($soap_like_xml_envelope =~ /<soap[^:]*:body\s[^\/>]*\/>/i){
+		$soap_like_xml_body=${&};
+	}elsif($soap_like_xml_envelope =~ /<soap[^:]*:body>/i){
+		$soap_like_xml_body=${&}.${'};
+		if($soap_like_xml_body =~ /<\/soap[^:]*:body>/i){
+			$soap_like_xml_body=${`}.${&};
+		}
+	}elsif($soap_like_xml_envelope =~ /<soap[^:]*:body\s[^>]>/i){
+		$soap_like_xml_body=${&}.${'};
+		if($soap_like_xml_body =~ /<\/soap[^:]*:body>/i){
+			$soap_like_xml_body=${`}.${&};
+		}
+	}
+	return(${soap_like_xml_envelope},${soap_like_xml_header},${soap_like_xml_body});
+}
+
+1;

@@ -1,0 +1,537 @@
+# File: cuprodigy_post_request.pi
+
+sub post_request_setup{
+	&logfile("PRUEBA KEVIN: post_request_setup\n");
+   # local($soap_server,$soap_port,$soap_proxy_host,$soap_uri_ns,$soap_action_ns,$soap_server_disconnect_seconds_lifecycle,$soap_server_disconnect_seconds_inactivity)=@_; #
+	if(defined $_[0]){ $post_request_setup{"SOAP_SERVER"}=$_[0]; }
+	if(defined $_[1]){ $post_request_setup{"SOAP_PORT"}=$_[1]; }
+	if(defined $_[2]){ $post_request_setup{"SOAP_PROXY_HOST"}=$_[2]; }
+	if(defined $_[3]){ $post_request_setup{"SOAP_URI_NS"}=$_[3]; }
+	if(defined $_[4]){ $post_request_setup{"SOAP_ACTION_NS"}=$_[4]; }
+	if(defined $_[5]){ $post_request_setup{"SOAP_DISCONNECT_SECONDS_LIFECYCLE"}=$_[5]; }
+	if(defined $_[6]){ $post_request_setup{"SOAP_DISCONNECT_SECONDS_INACTIVITY"}=$_[6]; }
+}
+
+sub post_request_null_values{	# MARK -- Cleanup in CUProdigy (null values not apply in CUProdigy?)
+&logfile("PRUEBA KEVIN: post_request_null_values\n");
+   my($action,$xml)=@_;
+   my($xml_tag);
+   my($incoming_null_value);
+   # my(%outgoing_null_values)=("NullInt","0","NullFloat","0.0","NullCurrency","0.00","NullDt","1900-01-01","NullDtTime","1900-01-01T00:00:00.0000000-00:00");
+   my(%outgoing_null_values)=("NullInt","","NullFloat","","NullCurrency","","NullDt","","NullDtTime","");
+	if    ($action =~ /^set$/i or $action =~ /^setup$/i){
+		$xml =~ s/<[^\s:>]*:/</g; $xml_tag =~ s/<\/[^\s:]*:/<\//g;	# Strip name space qualifiers
+		undef %post_request_null_values;
+		for $xml_tag (keys(%outgoing_null_values)){
+			if    ($xml =~ /<${xml_tag}\/>/i){	# Combined open and close xml tag
+				$incoming_null_value="";
+			}elsif($xml =~ /<${xml_tag}\s[^\/>]*\/>/i){	# Combined open and close xml tag
+				$incoming_null_value="";
+			}elsif($xml =~ /<${xml_tag}>/i){
+				($incoming_null_value=${'})=~s/<.*$//;
+			}elsif($xl =~ /<${xml_tag}\s[^\/>]*\/>/i){
+				($incoming_null_value=${'})=~s/<.*$//;
+			}
+			if(${incoming_null_value} ne ""){
+				$post_request_null_values{${xml_tag}}=${incoming_null_value};
+			}
+		}
+	}elsif($action =~ /^apply$/i or $action =~ /^filter$/i){
+		for $xml_tag (keys(%post_request_null_values)){
+			$incoming_null_value=$post_request_null_values{${xml_tag}};
+			$outgoing_null_value=$outgoing_null_values{${xml_tag}};
+			if($post_request_null_values{${xml_tag}} ne ""){
+				$xml=~s/>\Q${incoming_null_value}\E</>\Q${outgoing_null_value}\E</g;
+			}
+		}
+	}else{
+		undef $xml;
+	}
+	return(${xml});
+}
+
+sub post_request_non_printable_values{
+	&logfile("PRUEBA KEVIN: post_request_non_printable_values\n");
+   my($action,$xml)=@_;
+   my(%INPUT_FILTER);
+   my($ord);
+	if    ($action =~ /^set$/i or $action =~ /^setup$/i){
+		1;
+	}elsif($action =~ /^apply$/i or $action =~ /^filter$/i){
+		if($xml =~ /[\0-\10\13\14\16-\37\177-\377]/){
+			for($ord=ord("\0");$ord<=ord("\377");$ord++){
+				if(pack("c",${ord}) =~ /[\0-\10\13\14\16-\37\177-\377]/){
+					($INPUT_FILTER{pack("c",${ord})}='%'.sprintf("%02x",${ord}))=~tr/a-z/A-Z/;
+				}
+			}
+			$xml=~s/[\0-\10\13\14\16-\37\177-\377]/$INPUT_FILTER{$&}/g;
+		}
+	}else{
+		undef $xml;
+	}
+	return(${xml});
+}
+
+sub post_request_expand_io_text{
+	&logfile("PRUEBA KEVIN: post_request_expand_io_text\n");
+   my($left_margin,$text)=@_;
+   my($rtrn);
+   my(@f);
+   my($idx);
+   	$text=~s/\n$//; @f=(split(/\n/,${text}." ")); $f[$#f]=~s/ $//;
+	while(@f > 0){
+		$rtrn.=${left_margin}.shift(@f)."\n";
+	}
+	$rtrn=~s/\n$//;
+	return(${rtrn});
+}
+
+sub post_request{
+	&logfile("PRUEBA KEVIN: post_request\n");
+   my($soap_like_method_plus_describers,$soap_like_xml_messagedigest_new,$soap_like_xml_messagedigest_old,$general_options,$parallel_options)=@_;
+   my($rtrn_header,$rtrn_xmldata,$rtrn_status,$rtrn_soap_exception)=("","","","");
+   my($soap_like_method,@describers);
+   my($soap_like_packet);
+   my($content_length);
+   my($transfer_encoding,$transfer_encoding_chunk_length_hex,$transfer_encoding_chunk_eol_chars);
+   my($line);
+   my($append_to_current_parsed_xml);
+   my($new_connection)=0;
+   my($eof_retries)=4;
+   my($serial_seq_std_id,$serial_seq_map_id,$serial_put,$serial_get)=("","",0,0);
+   my($parallel_seq_std_id,$parallel_seq_map_id,$parallel_put,$parallel_get)=("","",0,0);
+   my($timeout_seconds_default,$timeout_seconds_this_method,$timeout_seconds_remaining,$timeout_time_beg);
+	if(!defined $post_request_setup{"SOAP_SERVER"} or !defined $post_request_setup{"SOAP_PORT"} or !defined $post_request_setup{"SOAP_PROXY_HOST"} or !defined $post_request_setup{"SOAP_URI_NS"} or !defined $post_request_setup{"SOAP_ACTION_NS"}){
+		$rtrn_status="ERR: Must use 'post_request_setup()' before first call of 'post_request()'.";
+	}
+	($soap_like_method,@describers)=split(/\n/,${soap_like_method_plus_describers});
+	$soap_like_method_plus_describers=join(" / ",@describers);
+	if(${soap_like_method} !~ /^\s*$/){
+		$soap_like_method_plus_describers=${soap_like_method}." / ".${soap_like_method_plus_describers};
+	}
+	if($rtrn_status eq ""){
+   		$general_options=",${general_options},";
+	}
+	if    ($CONF__NET_TELNET__TIMEOUT{""} =~ /^\d\d*$/){
+		$timeout_seconds_default=$CONF__NET_TELNET__TIMEOUT{""};
+		$timeout_seconds_this_method=$CONF__NET_TELNET__TIMEOUT{""};
+	}else{
+		$timeout_seconds_default=sprintf("%.0f",30-2);		# Set to 2 seconds less than the HomeCU's default apache ".mp" config "telnet_timeout" for Net::Telnet timeout configuration for HomeCU middleware to CUProdigy API
+		$timeout_seconds_this_method=sprintf("%.0f",30-2);	# Set to 2 seconds less than the HomeCU's default apache ".mp" config "telnet_timeout" for Net::Telnet timeout configuration for HomeCU middleware to CUProdigy API
+	}
+	if    (${soap_like_method} !~ /^\s*$/ and $CONF__NET_TELNET__TIMEOUT{${soap_like_method}} =~ /^\d\d*$/){
+		$timeout_seconds_this_method=$CONF__NET_TELNET__TIMEOUT{${soap_like_method}};
+		&logfile('post_request(): Temporary change '.${CTRL__SERVER_REFERENCE__CUPRODIGY}.' connection timeout to '.${timeout_seconds_this_method}.' seconds (override default '.${timeout_seconds_default}.' seconds) for method "'.${soap_like_method}.'"'.".\n") if ${timeout_seconds_this_method} != ${timeout_seconds_default};
+	}
+	if($rtrn_status eq ""){
+		if($parallel_options eq ""){
+			$serial_put=1;
+			$serial_get=1;
+			$serial_seq_std_id="";
+			$serial_seq_map_id="";
+		}else{
+			if    ((&post_request_parallel_options_split(${parallel_options}))[0] =~ /^put$/){
+				$parallel_put=1;
+				$parallel_seq_std_id=(&post_request_parallel_options_split(${parallel_options}))[1];
+				$parallel_seq_map_id=&post_request_parallel_seq_normalized(${parallel_seq_std_id});
+			}elsif((&post_request_parallel_options_split(${parallel_options}))[0] =~ /^get$/){
+				$parallel_get=1;
+				$parallel_seq_std_id=(&post_request_parallel_options_split(${parallel_options}))[1];
+				$parallel_seq_map_id=&post_request_parallel_seq_normalized(${parallel_seq_std_id});
+			}else{
+				$rtrn_status="ERR: Invalid parallel processing options specified for 'post_request()': ${parallel_options}";
+				$parallel_seq_std_id="";
+				$parallel_seq_map_id="";
+				$parallel_put=0;
+				$parallel_get=0;
+			}
+			if(${parallel_put} or ${parallel_get}){
+				if    ($parallel_seq_std_id !~ /^\d\d*$/){
+					$rtrn_status="ERR: Invalid parallel processing options specified for 'post_request()': ${parallel_options}";
+					$parallel_seq_std_id="";
+					$parallel_seq_map_id="";
+					$parallel_put=0;
+					$parallel_get=0;
+				}elsif($parallel_seq_std_id =~ /^0*$/){
+					$rtrn_status="ERR: Invalid parallel processing options specified for 'post_request()': ${parallel_options}";
+					$parallel_seq_std_id="";
+					$parallel_seq_map_id="";
+					$parallel_put=0;
+					$parallel_get=0;
+				}
+			}
+		}
+	}
+print FH_DEBUG "[${parallel_options}] [${serial_put}+${serial_get}/${serial_seq_std_id}/${serial_seq_map_id}] [${parallel_put}+${parallel_get}/${parallel_seq_std_id}/${parallel_seq_map_id}]\n";	# MARK -- DEBUG
+	if($rtrn_status eq "" and ( ${serial_put} or ${parallel_put} ) ){
+		&print_io_recording("# > DATE: ",&timestamp(),"\n");
+		&print_io_recording("# > MODE: ",( ${serial_put} ? "SERIAL" : "PARALLEL(${parallel_seq_std_id})" ),"\n");
+		&print_io_recording("# > DESC: ",${soap_like_method_plus_describers},"\n") if ${soap_like_method_plus_describers} ne "";
+		$GLOB__IO_RECORDING__METHOD_PLUS_DESCRIBERS="# > DESC: ".${soap_like_method_plus_describers};
+		while(1){
+			# Inactivity appears to cause the CUProdigy connection to close, so automatically handle it.
+			if(${rtrn_status} eq ""){
+				$glob_soap_like_connection=$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}};
+				if(defined ${glob_soap_like_connection}){
+					if($glob_soap_like_connection__disconnect_lifecycle{${serial_seq_map_id}.${parallel_seq_map_id}} ne "" and $glob_soap_like_connection__disconnect_lifecycle{${serial_seq_map_id}.${parallel_seq_map_id}} <= time()){
+						if(&post_request_parallel_seq_normalized(${parallel_seq_std_id}) eq ""){
+							&logfile("Closing the lifecycled (likely remotely disconnected) ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as serial/parallel(".sprintf("%04.0f",1).").\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+						}else{
+							&logfile("Closing the lifecycled (likely remotely disconnected) ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as parallel(${parallel_seq_std_id}).\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+						}
+						&soap_like_connection_close(${glob_soap_like_connection});
+						undef $glob_soap_like_connection;
+						$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}}=$glob_soap_like_connection;
+						delete($post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}});
+						delete($glob_soap_like_connection__disconnect_lifecycle{${serial_seq_map_id}.${parallel_seq_map_id}});
+					}
+				}
+				if(defined ${glob_soap_like_connection}){
+					if($glob_soap_like_connection__disconnect_inactivity{${serial_seq_map_id}.${parallel_seq_map_id}} ne "" and $glob_soap_like_connection__disconnect_inactivity{${serial_seq_map_id}.${parallel_seq_map_id}} <= time()){
+						if(&post_request_parallel_seq_normalized(${parallel_seq_std_id}) eq ""){
+							&logfile("Closing the inactive (likely remotely disconnected) ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as serial/parallel(".sprintf("%04.0f",1).").\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+						}else{
+							&logfile("Closing the inactive (likely remotely disconnected) ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as parallel(${parallel_seq_std_id}).\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+						}
+						&soap_like_connection_close(${glob_soap_like_connection});
+						undef $glob_soap_like_connection;
+						$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}}=$glob_soap_like_connection;
+						delete($post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}});
+						delete($glob_soap_like_connection__disconnect_inactivity{${serial_seq_map_id}.${parallel_seq_map_id}});
+					}
+				}
+				if(!defined ${glob_soap_like_connection}){
+					if(&post_request_parallel_seq_normalized(${parallel_seq_std_id}) eq ""){
+						&logfile("Opening the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." for use as serial/parallel(".sprintf("%04.0f",1).").\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+					}else{
+						&logfile("Opening the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." for use as parallel(${parallel_seq_std_id}).\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+					}
+					$glob_soap_like_connection=&soap_like_connection_open($post_request_setup{"SOAP_SERVER"},$post_request_setup{"SOAP_PORT"});
+					if(! defined ${glob_soap_like_connection}){
+						$rtrn_status="ERR: Failed opening connection to: ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"};
+					}else{
+						$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}}=${glob_soap_like_connection};
+					}
+					$new_connection=1;
+				}
+				if(${new_connection} and $post_request_setup{"SOAP_DISCONNECT_SECONDS_LIFECYCLE"} > 0){
+					$glob_soap_like_connection__disconnect_lifecycle{${serial_seq_map_id}.${parallel_seq_map_id}}=sprintf("%.0f",time()+$post_request_setup{"SOAP_DISCONNECT_SECONDS_LIFECYCLE"}-1); 
+				}
+				if($post_request_setup{"SOAP_DISCONNECT_SECONDS_INACTIVITY"} > 0){
+					$glob_soap_like_connection__disconnect_inactivity{${serial_seq_map_id}.${parallel_seq_map_id}}=sprintf("%.0f",time()+$post_request_setup{"SOAP_DISCONNECT_SECONDS_INACTIVITY"}-1); 
+				}
+&print_io_recording("# > FILE: ",fileno(${glob_soap_like_connection}),"\n");	# MARK -- DEBUG
+			}
+			if(${rtrn_status} eq ""){
+				if(${new_connection}){
+					$soap_like_packet=&soap_like_post_header($post_request_setup{"SOAP_SERVER"},$post_request_setup{"SOAP_PROXY_HOST"},$post_request_setup{"SOAP_URI_NS"},$post_request_setup{"SOAP_ACTION_NS"},${soap_like_method},${soap_like_xml_messagedigest_new}).${soap_like_xml_messagedigest_new};
+				}else{
+					$soap_like_packet=&soap_like_post_header($post_request_setup{"SOAP_SERVER"},$post_request_setup{"SOAP_PROXY_HOST"},$post_request_setup{"SOAP_URI_NS"},$post_request_setup{"SOAP_ACTION_NS"},${soap_like_method},${soap_like_xml_messagedigest_old}).${soap_like_xml_messagedigest_old};
+				}
+				&print_io_recording(&post_request_expand_io_text("> ",${soap_like_packet}),"\n");
+				$timeout_seconds_remaining=${timeout_seconds_this_method};
+				$timeout_time_beg=time();
+				$glob_soap_like_connection->timeout(${timeout_seconds_remaining});
+				$glob_soap_like_connection->put(${soap_like_packet});
+				if(${rtrn_status} eq "" and $glob_soap_like_connection->eof){ $rtrn_status="EOF"; }
+				if(${rtrn_status} eq "" and $glob_soap_like_connection->print_length != length(${soap_like_packet})){ $rtrn_status="EOF"; }	# It appears that Net::Telnet->eof is not affected by failure of NET::Telnet->put (perhaps only affected by input routines like Net::Telnet->getline and Net::Telnet->waitfor).
+				# if(${rtrn_status} eq "" and $glob_soap_like_connection->print_length != length(${soap_like_packet})){ $rtrn_status="ERR: Failed writting data to connection."; }
+			}
+			last if ${rtrn_status} ne "EOF";
+			last if ${eof_retries} <= 0;
+	   		$eof_retries=sprintf("%.0f",${eof_retries}-1);
+			if(&post_request_parallel_seq_normalized(${parallel_seq_std_id}) eq ""){
+				&logfile("Closing the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as serial/parallel(".sprintf("%04.0f",1).").\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+			}else{
+				&logfile("Closing the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as parallel(${parallel_seq_std_id}).\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+			}
+			&soap_like_connection_close(${glob_soap_like_connection});
+			undef $glob_soap_like_connection;
+			$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}}=$glob_soap_like_connection;
+			delete($post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}});
+			$rtrn_status="";
+			&print_io_recording("# > STATUS: ","EOF -- Will try re-opening","\n");
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# > MODE: ",( ${serial_put} ? "SERIAL" : "PARALLEL(${parallel_seq_std_id})" ),"\n");
+			&print_io_recording("# > DESC: ",${soap_like_method_plus_describers},"\n") if ${soap_like_method_plus_describers} ne "";
+			$GLOB__IO_RECORDING__METHOD_PLUS_DESCRIBERS="# > DESC: ".${soap_like_method_plus_describers};
+		}
+		if(${rtrn_status} ne ""){
+			if(${eof_retries} <= 0){
+				&logfile("Failed all attempts to re-open the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}.".\n");
+			}
+		}
+		&print_io_recording("# > DATE: ",&timestamp(),"\n");
+	}
+	if($rtrn_status eq "" and ( ${serial_put} or ${parallel_put} ) ){
+		&post_request_log_transaction_xml("send",${soap_like_method},${soap_like_packet});
+	}
+	if($rtrn_status eq "" and ( ${serial_get} or ${parallel_get} ) ){
+		&print_io_recording("# < DATE: ",&timestamp(),"\n");
+		&print_io_recording("# < MODE: ",( ${serial_get} ? "SERIAL" : "PARALLEL(${parallel_seq_std_id})" ),"\n");
+		&print_io_recording("# < DESC: ",${soap_like_method_plus_describers},"\n") if ${soap_like_method_plus_describers} ne "";
+		$GLOB__IO_RECORDING__METHOD_PLUS_DESCRIBERS="# < DESC: ".${soap_like_method_plus_describers};
+		$glob_soap_like_connection=$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}};	# FIX -- 2009-01-13 -- Added this line to fix wrong $glob_soap_like_connection value during parallel mode.
+&print_io_recording("# < FILE: ",fileno(${glob_soap_like_connection}),"\n");	# MARK -- DEBUG
+		if(${rtrn_status} eq ""){
+			# Process POST header lines
+			$content_length="";
+			$transfer_encoding="";
+			while(1){
+				$timeout_seconds_remaining=&post_request_timeout_seconds_remaining(${timeout_time_beg},${timeout_seconds_this_method},1);
+				($line,$rtrn_status)=&soap_like_connection_read($glob_soap_like_connection,${timeout_seconds_remaining},"upto","\n");
+				$rtrn_header.=${line};
+				last if ${rtrn_status} ne "";
+				last if $line =~ /^\s*[\r\n][\r\n]*$/;
+				if($line =~ /^Content-Length:/i){
+					($content_length=$line)=~s/[\r\n][\r\n]*$//;
+					$content_length=~s/^Content-Length:\s*//i;
+					$content_length=~s/\s*$//;
+					$content_length=sprintf("%.0f",${content_length});
+				}elsif($line =~ /^Transfer-Encoding:/i){
+					($transfer_encoding=$line)=~s/[\r\n][\r\n]*$//;
+					$transfer_encoding=~s/^Transfer-Encoding:\s*//i;
+					$transfer_encoding=~s/\s*$//;
+				}
+			}
+			# Process XML content
+			if    (${content_length} ne ""){
+				$timeout_seconds_remaining=&post_request_timeout_seconds_remaining(${timeout_time_beg},${timeout_seconds_this_method},1);
+				($line,$rtrn_status)=&soap_like_connection_read($glob_soap_like_connection,${timeout_seconds_remaining},"bytes",${content_length});
+				$rtrn_xmldata.=${line};
+			}elsif(${transfer_encoding} =~ /^chunked$/i){
+				while(1){
+					$timeout_seconds_remaining=&post_request_timeout_seconds_remaining(${timeout_time_beg},${timeout_seconds_this_method},1);
+					($line,$rtrn_status)=&soap_like_connection_read($glob_soap_like_connection,${timeout_seconds_remaining},"upto","\n");
+					($transfer_encoding_chunk_length_hex=$line)=~s/[\r\n][\r\n]*$//;
+					$transfer_encoding_chunk_eol_chars=substr(${line},length(${transfer_encoding_chunk_length_hex}));
+					last if hex(${transfer_encoding_chunk_length_hex}) < 1;
+					$timeout_seconds_remaining=&post_request_timeout_seconds_remaining(${timeout_time_beg},${timeout_seconds_this_method},1);
+					($line,$rtrn_status)=&soap_like_connection_read($glob_soap_like_connection,${timeout_seconds_remaining},"bytes",hex(${transfer_encoding_chunk_length_hex}));
+					$rtrn_xmldata.=${line};
+					$timeout_seconds_remaining=&post_request_timeout_seconds_remaining(${timeout_time_beg},${timeout_seconds_this_method},1);
+					($line,$rtrn_status)=&soap_like_connection_read($glob_soap_like_connection,${timeout_seconds_remaining},"bytes",length($transfer_encoding_chunk_eol_chars));
+				}
+				print "Data procesada: '$rtrn_xmldata.'";
+				if(${rtrn_status} eq ""){
+					$timeout_seconds_remaining=&post_request_timeout_seconds_remaining(${timeout_time_beg},${timeout_seconds_this_method},1);
+					($line,$rtrn_status)=&soap_like_connection_read($glob_soap_like_connection,${timeout_seconds_remaining},"upto","\n");
+				}
+			}else{
+				if(${rtrn_status} eq ""){
+					$rtrn_status="post_request(): response header did not contain a recognized 'Content-Length' nor 'Transfer-Encoding' line.";
+					($line=$rtrn_header)=~s/[\r\n][\r\n]*/\n/g;
+					$rtrn_status.="  Saw header lines: '".join("', '",split(/\n/,$line))."'.";
+				}
+			}
+		}
+		&print_io_recording(&post_request_expand_io_text("< ",${rtrn_header}),"\n");
+		&print_io_recording(&post_request_expand_io_text("< ",${rtrn_xmldata}),"\n");
+		&print_io_recording("# < STATUS: ",${rtrn_status},"\n");
+		&print_io_recording("# < DATE: ",&timestamp(),"\n");
+	}
+	if(defined($glob_soap_like_connection)){
+		$glob_soap_like_connection->timeout(${timeout_seconds_default});
+	}
+	if($rtrn_status eq "" and ( ${serial_get} or ${parallel_get} ) ){
+		if($general_options =~ /,filternulls,/i){
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# > WORK: ","FILTER NULLS","\n");
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# < DATE: ",&timestamp(),"\n");
+			$rtrn_xmldata=&post_request_null_values("filter",${rtrn_xmldata});
+			&print_io_recording("# < WORK: ","FILTER NULLS","\n");
+			&print_io_recording("# < STATUS: ","","\n");
+			&print_io_recording("# < DATE: ",&timestamp(),"\n");
+		}
+		if($general_options =~ /,filternonprintables,/i){
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# > WORK: ","FILTER NON-PRINTABLES","\n");
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# < DATE: ",&timestamp(),"\n");
+			if($rtrn_xmldata =~ /[\0-\10\13\14\16-\37\177-\377]/){
+				&logfile("post_request(): Detected and filtering non-printable characters in XML response for: ${soap_like_method_plus_describers}\n");
+				$rtrn_xmldata=&post_request_non_printable_values("filter",${rtrn_xmldata});
+			}
+			&print_io_recording("# < WORK: ","FILTER NON-PRINTABLES","\n");
+			&print_io_recording("# < STATUS: ","","\n");
+			&print_io_recording("# < DATE: ",&timestamp(),"\n");
+		}
+	}
+	if($rtrn_status eq "" and ( ${serial_get} or ${parallel_get} ) ){
+		if(${rtrn_xmldata} =~ /^\s*${CTRL__CUPRODIGY_SERVER__INTERNAL_TIMEOUT_ERROR__TEXT}\s*[\r\n]*$/){	# 2023-09-27 -- Undocumented common CUProdigy API (post-"Jetty" API version (after 2022-12-12)) malfunction
+			$GLOB__CUPRODIGY_SERVER__INTERNAL_TIMEOUT_ERROR=1;
+			($GLOB__CUPRODIGY_SERVER__INTERNAL_TIMEOUT_ERROR__ERRMSG="post_request(): response body contained non-XML data '${rtrn_xmldata}'") =~ s/[\r\n]//g;
+			$rtrn_status="SYSTEM TEMPORARILY EXCEEDED INTERNAL TIME-OUT";	# "${CTRL__SERVER_REFERENCE__CUPRODIGY} internal time-out";
+		}
+	}
+	if($rtrn_status eq "" and ( ${serial_get} or ${parallel_get} ) ){
+		if($general_options =~ /,parsexml,|,parsexml:replace|,parsexml:append,/i){
+			if($general_options =~ /,parsexml:append,/i){
+				$append_to_current_parsed_xml=1;
+			}else{
+				$append_to_current_parsed_xml=0;
+			}
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# > WORK: ","PARSE XML","\n");
+			&print_io_recording("# > DATE: ",&timestamp(),"\n");
+			&print_io_recording("# < DATE: ",&timestamp(),"\n");
+			&xml_parse(${rtrn_xmldata},${append_to_current_parsed_xml}); $rtrn_soap_exception=&xml_parse_soap_like_exception();
+			&print_io_recording("# < WORK: ","PARSE XML","\n");
+			&print_io_recording("# < STATUS: ","${rtrn_soap_exception}","\n");
+			&print_io_recording("# < DATE: ",&timestamp(),"\n");
+		}
+	}
+	if($rtrn_status eq "" and ( ${serial_get} or ${parallel_get} ) ){
+		&post_request_log_transaction_xml("recv",${soap_like_method},${rtrn_xmldata},${rtrn_status},${rtrn_soap_exception});
+	}
+&print_io_recording("\n\nPRUEBA: ${rtrn_xmldata}\n\n");&logfile("\n\nPRUEBA: ${rtrn_xmldata}\n\n");
+
+	if($general_options =~ /,limitedreturn,/i){
+		return("","",${rtrn_status},${rtrn_soap_exception});
+	}else{
+		return(${rtrn_header},${rtrn_xmldata},${rtrn_status},${rtrn_soap_exception});
+	}
+}
+
+sub post_request_timeout_seconds_remaining{
+	&logfile("PRUEBA KEVIN: post_request_timeout_seconds_remaining\n");
+   my($timeout_time_beg,$timeout_seconds_max,$sane_min_seconds)=@_;
+   my($timeout_seconds_remaining);
+   my($timeout_time_end,$timeout_seconds_used);
+	$timeout_time_end=time();
+	$timeout_seconds_used=sprintf("%.0f",${timeout_time_end}-${timeout_time_beg});
+	if(${timeout_seconds_used} < 0){ $timeout_seconds_used=sprintf("%.0f",0); }	# Opsys clock corrected during read
+	$timeout_seconds_remaining=sprintf("%.0f",${timeout_seconds_max}-${timeout_seconds_used});
+	if(${timeout_seconds_remaining} < ${sane_min_seconds}){ $timeout_seconds_remaining=sprintf("%.0f",${sane_min_seconds}); }	# Is often that $sane_min_seconds is 1 second for "sanity" reasons (to prevent an accidental timeout of "0" being "no timeout") and that the reading will be terminally ended by an EOF or TIM status even when timeout is "1".
+	return(${timeout_seconds_remaining});
+}
+
+sub post_request_parallel_options_split{
+	&logfile("PRUEBA KEVIN: post_request_parallel_options_split\n");
+   local($parallel_options)=@_;
+   local($parallel_mode,$parallel_seq)=("","");
+	if    ($parallel_options =~ /^put,/){
+		$parallel_mode=${`}.${&};
+		$parallel_seq=${'};
+	}elsif($parallel_options =~ /^get,/){
+		$parallel_mode=${`}.${&};
+		$parallel_seq=${'};
+	}
+	$parallel_mode=~s/,$//;
+	return($parallel_mode,$parallel_seq);
+}
+
+sub post_request_parallel_seq_normalized{
+	&logfile("PRUEBA KEVIN: post_request_parallel_seq_normalized\n");
+   local($parallel_options)=@_;
+   local($parallel_mode,$parallel_seq)=("","");
+	# Evaluate for optional /^put,/ or /^get,/
+	if    ($parallel_options =~ /^put,/){
+		$parallel_mode=${`}.${&};
+		$parallel_seq=${'};
+	}elsif($parallel_options =~ /^get,/){
+		$parallel_mode=${`}.${&};
+		$parallel_seq=${'};
+	}else{
+		$parallel_mode="";
+		$parallel_seq=${parallel_options};
+	}
+	# Evaluate sequence value
+	if($parallel_seq eq "" or  $parallel_seq =~ /^0*1$/){
+		$parallel_seq="";	# Share the connection between the only serial and the 1st parallel
+	}
+	if($parallel_seq eq ""){
+		$parallel_mode="";	# Share the connection between the only serial and the 1st parallel
+	}
+	# Return normalized result
+	return(${parallel_mode}.${parallel_seq});
+}
+
+sub post_request_parallel_flush_on_error{
+	&logfile("PRUEBA KEVIN: post_request_parallel_flush_on_error\n");
+   local($key);
+   local($serial_seq_map_id)="";
+   local($parallel_seq_map_id)="";
+   local($soap_like_connection);
+	foreach $key (sort(keys(%post_request_setup))){
+		next if $key !~ /^SOAP_CONNECTION/;
+		($parallel_seq_map_id=$key)=~s/^SOAP_CONNECTION//;	# Only works because $serial_seq_map_id is always blank ("") by design.
+		if(${parallel_seq_map_id} ne ""){
+			&logfile("Closing the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as parallel(${parallel_seq_map_id}).\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+			$soap_like_connection=$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}};
+			&soap_like_connection_close(${soap_like_connection});
+			undef $soap_like_connection;
+			$post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}}=${soap_like_connection};
+			delete($post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}});
+		}
+	}
+}
+
+sub post_request_log_transaction_xml{
+	&logfile("PRUEBA KEVIN: post_request_log_transaction_xml\n");
+   my($action,$soap_like_method,@other)=@_;
+   my($soap_like_packet);
+   my($xml,$status,$error);
+   my(@f);
+	if($soap_like_method =~ /^ChangeCardStatus$|^EStatementActivation$|^AccountTransfer$|^LoanPayment$|^LoanAddon$|^CheckWithdrawal$|^CheckWithdrawalLoan$|^CreditCardPayment$|^GLToMemberTransfer$|^MemberToGLTransfer$/i){	# MARK -- 2017-06-09 -- Needs to be a configured %POST_REQUEST_LOG_TRANSACTION_XML via post_request_log_transaction_xml_config()
+		if(${action} =~ /^send$/i){
+		   	$soap_like_packet=$other[0];
+	   		$soap_like_packet=~s/\r\n/\n/g;
+			@f=split(/\n/,${soap_like_packet});
+			while($f[0] !~ /^\s*$/){ shift(@f); }
+			&logfile("CUPRODIGY TRANSACTION: SEND: DATA: ".join("",@f)."\n");
+		}
+		if(${action} =~ /^recv$/i){
+			$xml=$other[0]; &normalize_io_cuprodigy($xml); # Edit $xml in place
+			$status=$other[1];
+			$error=$other[2];
+			&logfile("CUPRODIGY TRANSACTION: RECV: DATA: ".${xml}."\n");
+			&logfile("CUPRODIGY TRANSACTION: RECV: STATUS: ".${status}."\n");
+			if(${error} eq ""){
+				&logfile("CUPRODIGY TRANSACTION: RECV: ERROR: ".${error}."\n");
+			}else{
+				&logfile("CUPRODIGY TRANSACTION: RECV: ERROR: "."${CTRL__SERVER_REFERENCE__CUPRODIGY} transaction status error: ".${error}."\n");
+			}
+		}
+	}
+}
+
+sub post_request_abort{
+	&logfile("PRUEBA KEVIN: post_request_abort\n");
+   my($method,$header,$xmldata,$status,$soap_exception)=@_;
+	print STDERR "POST   [",${method},"]\n";
+	print STDERR "HEADER [",${header},"]\n";
+	print STDERR "DATA   [",${xmldata},"]\n";
+	print STDERR "STATUS [",${status},"]\n";
+	print STDERR "SOAP   [",${soap_exception},"]\n";
+	die("${0} Aborting.\n");
+}
+
+sub post_request_force_close_all_connections{
+	&logfile("PRUEBA KEVIN: post_request_force_close_all_connections\n");
+	# Maybe should be using "post_request_parallel_flush_on_error()"?
+   my($key);
+   local($serial_seq_map_id)="";
+   local($parallel_seq_map_id)="";
+   local($soap_like_connection);
+	foreach $key (sort(keys(%post_request_setup))){
+		next if $key !~ /^SOAP_CONNECTION/;
+		($parallel_seq_map_id=$key)=~s/^SOAP_CONNECTION//;	# Only works because $serial_seq_map_id is always blank ("") by design.
+		$soap_like_connection=$post_request_setup{${key}};	# Based on: $post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}};
+		if(defined ${soap_like_connection}){
+			if(&post_request_parallel_seq_normalized(${parallel_seq_map_id}) eq ""){
+				&logfile("Closing the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as serial/parallel(".sprintf("%04.0f",1).").\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+			}else{
+				&logfile("Closing the ".${CTRL__SERVER_REFERENCE__CUPRODIGY}." connection at ".$post_request_setup{"SOAP_SERVER"}.":".$post_request_setup{"SOAP_PORT"}." that was used as parallel(${parallel_seq_map_id}).\n") if ${CONF__CUPRODIGY_SERVER__TELNET_CONNECTIONS_QUIET} == 0;
+			}
+			&soap_like_connection_close(${soap_like_connection});
+			undef $soap_like_connection;
+			$post_request_setup{${key}}=${soap_like_connection};	# Based on: $post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}}=${soap_like_connection};
+		}
+		delete($post_request_setup{${key}});	# Based on: delete($post_request_setup{"SOAP_CONNECTION".${serial_seq_map_id}.${parallel_seq_map_id}});
+	}
+}
+
+1;
+

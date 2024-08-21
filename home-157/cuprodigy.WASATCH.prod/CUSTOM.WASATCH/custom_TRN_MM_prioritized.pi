@@ -1,0 +1,125 @@
+# File: /home/cusafiserv/CUSTOM/custom_TRN_MM_prioritized.pi	(for WASATCH)
+# Core:	CUProdigy Live
+
+sub custom_TRN_MM_prioritized{
+   # arg($auth_mb,$to_mb,$to_accttype,$look_for_group,$look_for_count,%SEQUENTIAL_ORDERED_LIST)=@_; #
+	return(&custom_TRN_MM_prioritized__wasatch(@_));
+}
+
+sub custom_TRN_MM_prioritized__xxxcu{
+   local($selfname)="custom_TRN_MM_prioritized__xxxcu";
+   local($auth_mb,$to_mb,$to_accttype,$look_for_group,$look_for_count,%SEQUENTIAL_ORDERED_LIST)=@_;
+   local($rtrn_accttype)="";
+   local($key);
+   local($idx);
+   local($sorting_group,$sorting_id);
+   local(@PRIORITY_GROUP_DRAFT)=("");	# Inclusion list that can be (does not have to be) configured to a prioritized list of <accountType> values (from CUProdigy API method "Inquiry" where response <accountCategory> is "Draft") 
+   local(@PRIORITY_GROUP_SHARE)=("");	# Inclusion list that can be (does not have to be) configured to a prioritized list of <accountType> values (from CUProdigy API method "Inquiry" where response <accountCategory> is "Share") 
+   local(@PRIORITY_GROUP,%PRIORITIZED_ORDERED_LIST);
+   local($found);
+	#
+	# NOTE: This subroutine does have access to global variables like:
+	#	Pre-populated (for $to_mb) associative array:
+	#		%XML_DATA_BY_TAG_INDEX
+	#	Pre-populated (for $to_mb) arrays:
+	#		@XML_MB_DP_BALS
+	#		@XML_MB_LN_BALS
+	#		@XML_MB_CC_BALS
+	#	Configuration variable as set by:
+	#		configure_account_by_cuprodigy_type()
+	#
+	if($look_for_group =~ /^Draft$/i){
+		@PRIORITY_GROUP=@PRIORITY_GROUP_DRAFT;
+	}
+	if($look_for_group =~ /^Share$/i){
+		@PRIORITY_GROUP=@PRIORITY_GROUP_SHARE;
+	}
+	foreach $key (sort(keys(%SEQUENTIAL_ORDERED_LIST))){
+		$sorting_id=$SEQUENTIAL_ORDERED_LIST{${key}};
+		($sorting_group=${sorting_id})=~s/:\d\d$//;
+		if(@PRIORITY_GROUP == 0){
+			$PRIORITIZED_ORDERED_LIST{${key}}=$SEQUENTIAL_ORDERED_LIST{${key}};	# Include all accounts (in sequential order) when @PRIORITY_GROUP is empty
+		}else{
+			$found=0;
+			for($idx=0;$idx<=$#PRIORITY_GROUP;$idx++){
+				if($PRIORITY_GROUP[${idx}] eq ${sorting_group}){ $found=1; last; }
+			}
+			if(${found}){
+				$PRIORITIZED_ORDERED_LIST{sprintf("%07.0f",${idx}),${sorting_id}}=$SEQUENTIAL_ORDERED_LIST{${key}};	# Include accounts where the group was found, controlling the sort order using a combination of a prefix (the priority of $idx within @PRIORITY_GROUP) and a postfix (the CUProdigy's account sequence of /:\d{2}$/).
+			}else{
+				1;	# Exclude the account when @PRIORITY_GROUP is not empty and the group was not found
+			}
+		}
+	}
+	$look_for_count=sprintf("%.0f",${look_for_count});
+	if(${look_for_count} > 0){
+		foreach $key (sort(keys(%PRIORITIZED_ORDERED_LIST))){
+			if(${look_for_count} == 1){
+				$rtrn_accttype=$PRIORITIZED_ORDERED_LIST{${key}};
+				last;
+			}
+			$look_for_count=sprintf("%.0f",${look_for_count}-1);
+		}
+	}
+	return(${rtrn_accttype});
+}
+
+sub custom_TRN_MM_prioritized__wasatch{
+   local($selfname)="custom_TRN_MM_prioritized__wasatch";
+   local($auth_mb,$to_mb,$to_accttype,$look_for_group,$look_for_count,%SEQUENTIAL_ORDERED_LIST)=@_;
+   local($rtrn_accttype)="";
+   local($key);
+   local($idx);
+   local($sorting_group,$sorting_id);
+   local(@PRIORITY_GROUP_DRAFT)=("6","7","14");	# Inclusion list that can be (does not have to be) configured to a prioritized list of <accountType> values (from CUProdigy API method "Inquiry" where response <accountCategory> is "Draft") 
+   local(@PRIORITY_GROUP_SHARE)=("1","5");	# Inclusion list that can be (does not have to be) configured to a prioritized list of <accountType> values (from CUProdigy API method "Inquiry" where response <accountCategory> is "Share") 
+   local(@PRIORITY_GROUP,%PRIORITIZED_ORDERED_LIST);
+   local($found);
+	#
+	# NOTE: This subroutine does have access to global variables like:
+	#	Pre-populated (for $to_mb) associative array:
+	#		%XML_DATA_BY_TAG_INDEX
+	#	Pre-populated (for $to_mb) arrays:
+	#		@XML_MB_DP_BALS
+	#		@XML_MB_LN_BALS
+	#		@XML_MB_CC_BALS
+	#	Configuration variable as set by:
+	#		configure_account_by_cuprodigy_type()
+	#
+	if($look_for_group =~ /^Draft$/i){
+		@PRIORITY_GROUP=@PRIORITY_GROUP_DRAFT;
+	}
+	if($look_for_group =~ /^Share$/i){
+		@PRIORITY_GROUP=@PRIORITY_GROUP_SHARE;
+	}
+	foreach $key (sort(keys(%SEQUENTIAL_ORDERED_LIST))){
+		$sorting_id=$SEQUENTIAL_ORDERED_LIST{${key}};
+		($sorting_group=${sorting_id})=~s/:\d\d$//;
+		if(@PRIORITY_GROUP == 0){
+			$PRIORITIZED_ORDERED_LIST{${key}}=$SEQUENTIAL_ORDERED_LIST{${key}};	# Include all accounts (in sequential order) when @PRIORITY_GROUP is empty
+		}else{
+			$found=0;
+			for($idx=0;$idx<=$#PRIORITY_GROUP;$idx++){
+				if($PRIORITY_GROUP[${idx}] eq ${sorting_group}){ $found=1; last; }
+			}
+			if(${found}){
+				$PRIORITIZED_ORDERED_LIST{sprintf("%07.0f",${idx}),${sorting_id}}=$SEQUENTIAL_ORDERED_LIST{${key}};	# Include accounts where the group was found, controlling the sort order using a combination of a prefix (the priority of $idx within @PRIORITY_GROUP) and a postfix (the CUProdigy's account sequence of /:\d{2}$/).
+			}else{
+				1;	# Exclude the account when @PRIORITY_GROUP is not empty and the group was not found
+			}
+		}
+	}
+	$look_for_count=sprintf("%.0f",${look_for_count});
+	if(${look_for_count} > 0){
+		foreach $key (sort(keys(%PRIORITIZED_ORDERED_LIST))){
+			if(${look_for_count} == 1){
+				$rtrn_accttype=$PRIORITIZED_ORDERED_LIST{${key}};
+				last;
+			}
+			$look_for_count=sprintf("%.0f",${look_for_count}-1);
+		}
+	}
+	return(${rtrn_accttype});
+}
+
+1;

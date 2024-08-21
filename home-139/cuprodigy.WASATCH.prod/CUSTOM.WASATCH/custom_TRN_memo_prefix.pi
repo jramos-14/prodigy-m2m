@@ -1,0 +1,237 @@
+# File: /home/cusafiserv/CUSTOM/custom_TRN_memo_prefix.pi	(for WASATCH)
+# Core:	CUProdigy Live
+
+# Expected (required) to produce an HTML/XML encoded safe result (like textfilter_html() would produce)
+
+sub custom_TRN_memo_prefix{
+   # arg($request_membernumber,$from_request_membernumber,$from_dp_or_ln,$to_request_membernumber,$to_dp_or_ln,$tran_code)=@_; #
+	return(&custom_TRN_memo_prefix__wasatch(@_));
+}
+
+sub custom_TRN_memo_prefix__xxxcu{
+   local($selfname)="custom_TRN_memo_prefix__xxxcu";
+   local($request_membernumber,$from_request_membernumber,$from_dp_or_ln,$to_request_membernumber,$to_dp_or_ln,$tran_code)=@_;
+   local($rtrn_memo_prefix)="";	# Maximum 56 characters (plus 2 plus 3 plus 60 equals 121)
+	if    (${tran_code} eq "AT"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "CP"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "CW"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "GF"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "GT"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "LA"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "LC"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}elsif(${tran_code} eq "LP"){
+		return(undef);	# Will result default CUDP formatted TRN memo prefix being used
+	}else{
+		return(undef);	# Well result default TRN memo prefix being used
+	}
+	return(${rtrn_memo_prefix});
+}
+
+sub custom_TRN_memo_prefix__wasatch{
+   local($selfname)="custom_TRN_memo_prefix__wasatch";
+   local($request_membernumber,$from_request_membernumber,$from_dp_or_ln,$to_request_membernumber,$to_dp_or_ln,$tran_code)=@_;
+   local($rtrn_memo_prefix)="";	# Maximum 56 characters (plus 2 plus 3 plus 60 equals 121)
+   local($from_member_name,$to_member_name);
+   local($masked_from_mbnum,$masked_to_mbnum);
+	# Based upon 2023-04-30 Google Doc [[[ https://docs.google.com/document/d/1E2M4_kYvLooDRD9SwpUzV0iEcJZrM76lbgs9UQrNLKs ]]] and [[[ https://docs.google.com/document/d/1jEtiqieWo0cUomhheg6S0k2PoTR3yXE6CvCeTBcIY5Y ]]]
+   	$masked_from_mbnum="###".substr("000".${from_request_membernumber},-3,3);
+   	$masked_to_mbnum="###".substr("000".${to_request_membernumber},-3,3);
+	if    (${tran_code} eq "AT"){
+		if(${from_request_membernumber} ne ${to_request_membernumber}){
+			$from_member_name=&custom_TRN_memo_prefix__wasatch__member_name($from_request_membernumber);
+			$to_member_name=&custom_TRN_memo_prefix__wasatch__member_name($to_request_membernumber);
+   			($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			while(length(${rtrn_memo_prefix}) > 56){
+				last if ${to_member_name} eq "" and ${from_member_name} eq "";	# Prevent accidental infinate loop
+   				if(length(${to_member_name}) > length(${from_member_name})){
+					if($to_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$to_member_name=$`;
+					}else{
+						$to_member_name=~s/.$//;
+					}
+					$to_member_name=~s/ *$//;
+				}else{
+					if($from_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$from_member_name=$`;
+					}else{
+						$from_member_name=~s/.$//;
+					}
+					$from_member_name=~s/ *$//;
+				}
+   				($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			}
+		}else{
+	   		$rtrn_memo_prefix="To: ${to_dp_or_ln} Fr: ${from_dp_or_ln}";
+		}
+	}elsif(${tran_code} eq "CP"){
+		if(${from_request_membernumber} ne ${to_request_membernumber}){
+			$from_member_name=&custom_TRN_memo_prefix__wasatch__member_name($from_request_membernumber);
+			$to_member_name=&custom_TRN_memo_prefix__wasatch__member_name($to_request_membernumber);
+   			($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			while(length(${rtrn_memo_prefix}) > 56){
+				last if ${to_member_name} eq "" and ${from_member_name} eq "";	# Prevent accidental infinate loop
+   				if(length(${to_member_name}) > length(${from_member_name})){
+					if($to_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$to_member_name=$`;
+					}else{
+						$to_member_name=~s/.$//;
+					}
+					$to_member_name=~s/ *$//;
+				}else{
+					if($from_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$from_member_name=$`;
+					}else{
+						$from_member_name=~s/.$//;
+					}
+					$from_member_name=~s/ *$//;
+				}
+   				($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			}
+		}else{
+	   		$rtrn_memo_prefix="To: ${to_dp_or_ln} Fr: ${from_dp_or_ln}";
+		}
+	}elsif(${tran_code} eq "CW"){
+	   	$rtrn_memo_prefix="";
+	}elsif(${tran_code} eq "GF"){	# Funds "From" G/L, what about TRN "GP" ?
+		if(1){
+			$from_member_name="";
+			$to_member_name=&custom_TRN_memo_prefix__wasatch__member_name($to_request_membernumber);
+   			($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: External account")=~s/ *$//;
+			while(length(${rtrn_memo_prefix}) > 56){
+				last if ${to_member_name} eq "" and ${from_member_name} eq "";	# Prevent accidental infinate loop
+   				if(length(${to_member_name}) > length(${from_member_name})){
+					if($to_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$to_member_name=$`;
+					}else{
+						$to_member_name=~s/.$//;
+					}
+					$to_member_name=~s/ *$//;
+				}else{
+					if($from_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$from_member_name=$`;
+					}else{
+						$from_member_name=~s/.$//;
+					}
+					$from_member_name=~s/ *$//;
+				}
+   				($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: External account")=~s/ *$//;
+			}
+		}else{
+	   		$rtrn_memo_prefix="To: ${to_dp_or_ln} Fr: ${from_dp_or_ln}";
+		}
+	}elsif(${tran_code} eq "GT"){	# Funds "To" G/L, what about TRN "GA" ?
+		if(1){
+			$from_member_name=&custom_TRN_memo_prefix__wasatch__member_name($from_request_membernumber);
+			$to_member_name="";
+   			($rtrn_memo_prefix="To: External account Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			while(length(${rtrn_memo_prefix}) > 56){
+				last if ${to_member_name} eq "" and ${from_member_name} eq "";	# Prevent accidental infinate loop
+   				if(length(${to_member_name}) > length(${from_member_name})){
+					if($to_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$to_member_name=$`;
+					}else{
+						$to_member_name=~s/.$//;
+					}
+					$to_member_name=~s/ *$//;
+				}else{
+					if($from_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$from_member_name=$`;
+					}else{
+						$from_member_name=~s/.$//;
+					}
+					$from_member_name=~s/ *$//;
+				}
+   				($rtrn_memo_prefix="To: External account Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			}
+		}else{
+	   		$rtrn_memo_prefix="To: ${to_dp_or_ln} Fr: ${from_dp_or_ln}";
+		}
+	}elsif(${tran_code} eq "LA"){
+		if(${from_request_membernumber} ne ${to_request_membernumber}){
+			$from_member_name=&custom_TRN_memo_prefix__wasatch__member_name($from_request_membernumber);
+			$to_member_name=&custom_TRN_memo_prefix__wasatch__member_name($to_request_membernumber);
+   			($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			while(length(${rtrn_memo_prefix}) > 56){
+				last if ${to_member_name} eq "" and ${from_member_name} eq "";	# Prevent accidental infinate loop
+   				if(length(${to_member_name}) > length(${from_member_name})){
+					if($to_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$to_member_name=$`;
+					}else{
+						$to_member_name=~s/.$//;
+					}
+					$to_member_name=~s/ *$//;
+				}else{
+					if($from_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$from_member_name=$`;
+					}else{
+						$from_member_name=~s/.$//;
+					}
+					$from_member_name=~s/ *$//;
+				}
+   				($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			}
+		}else{
+	   		$rtrn_memo_prefix="To: ${to_dp_or_ln} Fr: ${from_dp_or_ln}";
+		}
+	}elsif(${tran_code} eq "LC"){
+	   	$rtrn_memo_prefix="";
+	}elsif(${tran_code} eq "LP"){
+		if(${from_request_membernumber} ne ${to_request_membernumber}){
+			$from_member_name=&custom_TRN_memo_prefix__wasatch__member_name($from_request_membernumber);
+			$to_member_name=&custom_TRN_memo_prefix__wasatch__member_name($to_request_membernumber);
+   			($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			while(length(${rtrn_memo_prefix}) > 56){
+				last if ${to_member_name} eq "" and ${from_member_name} eq "";	# Prevent accidental infinate loop
+   				if(length(${to_member_name}) > length(${from_member_name})){
+					if($to_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$to_member_name=$`;
+					}else{
+						$to_member_name=~s/.$//;
+					}
+					$to_member_name=~s/ *$//;
+				}else{
+					if($from_member_name=~/&[a-z]{2,4};$/i){	# XML encoded character
+						$from_member_name=$`;
+					}else{
+						$from_member_name=~s/.$//;
+					}
+					$from_member_name=~s/ *$//;
+				}
+   				($rtrn_memo_prefix="To: ${masked_to_mbnum} ${to_member_name} Fr: ${masked_from_mbnum} ${from_member_name}")=~s/ *$//;
+			}
+		}else{
+	   		$rtrn_memo_prefix="To: ${to_dp_or_ln} Fr: ${from_dp_or_ln}";
+		}
+	}else{
+		return(undef);	# Well result default TRN memo prefix being used
+	}
+	return(${rtrn_memo_prefix});
+}
+
+sub custom_TRN_memo_prefix__wasatch__member_name{
+   local($mbnum)=@_;
+   local($rtrn_name);
+   local($error,$composit,$firstname,$lastname);
+	($error,$composit)=&mir_inquiry(${mbnum},1);
+	($firstname,$lastname)=(split(/\t/,${composit}."\t\t\t\t"))[1,3];
+	$firstname=~s/^\s*//; $firstname=~s/\s*$//;
+	$lastname=~s/^\s*//; $lastname=~s/\s*$//;
+	if($firstname=~/^&[a-z]{2,4};/i){	# XML encoded character
+		$rtrn_name=$&." ".$lastname;
+	}else{
+		$rtrn_name=substr(${firstname}." ",0,1)." ".$lastname;
+	}
+	$rtrn_name=~s/   *$/ /g;
+	$rtrn_name=~s/^ *//;
+	$rtrn_name=~s/ *$//;
+	return($rtrn_name);
+}
+
+1;

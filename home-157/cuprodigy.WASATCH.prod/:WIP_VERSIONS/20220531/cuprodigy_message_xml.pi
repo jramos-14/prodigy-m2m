@@ -1,0 +1,1008 @@
+# File: cuprodigy_message_xml.pi
+# Gary Jay Peters
+# 2008-01-21
+
+$CUPRODIGY_QUIRK__ACCOUNTHISTORY__USE_NUMBEROFITEMSTORETRIEVE=1;
+$CUPRODIGY_QUIRK__ACCOUNTHISTORY__USE_DATERANGE=1;
+
+use POSIX (strftime);
+use Time::Local;
+
+sub message_xml{
+   my($uri_ns_base,$ns,@to_be_returned)=@_;
+   my(@rtrn);
+   my(%xml_code);
+   my($requestid_test);
+	$requestid_test=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+    	$xml_code{"begin"}=
+		"<".join(" ",
+			'submitMessage',
+			'xmlns="http://ws.qie.qvera.com/"',
+			'RequestID="'.${requestid_test}.'"'
+		).">".
+		"<".join(" ",
+			'message xmlns=""'
+		).">".
+		'<![CDATA['	# Begin wrapper tag for XML data (included between "<![CDATA[" and "]]>")
+	;
+    	$xml_code{"end"}=
+		']]>'.		# End wrapper tag for XML data (included between "<![CDATA[" and "]]>")
+		"<".join(" ",
+			'/message'
+		).">".
+		"<".join(" ",
+			'paramKeys xmlns=""/'
+		).">".
+		"<".join(" ",
+			'paramValues xmlns=""/'
+		).">".
+		"<".join(" ",
+			'/submitMessage'
+		).">"
+	;
+    	$xml_code{"empty"}=$xml_code{"begin"}.$xml_code{"end"};
+	while(@to_be_returned>0){
+		$to_be_returned[0]=~s/^{$/begin/; $to_be_returned[0]=~s/^}$/end/; $to_be_returned[0]=~s/^{}$/empty/;
+		$to_be_returned[0]=~tr/A-Z/a-z/;
+		push(@rtrn,$xml_code{$to_be_returned[0]});
+		shift(@to_be_returned);
+	}
+	push(@rtrn,$xml_code{"begin"},$xml_code{"end"},$xml_code{"empty"}) if @rtrn == 0;
+	return(@rtrn);
+}
+
+sub message_xml_request_header{
+	return(
+		join("",
+			'<header>',
+			'<vendorNumber>'.&textfilter_xml(${CONF__CUPRODIGY_AUTHENTICATION__VENDORNUMBER}).'</vendorNumber>',
+			'<vendorPassword>'.&textfilter_xml(${CONF__CUPRODIGY_AUTHENTICATION__VENDORPASSWORD}).'</vendorPassword>',
+			'</header>'
+		)
+	);
+}
+
+sub message_xml__mode_setup{
+    local($mode,@extra_text)=@_;	# Mode: "0" for INITIAL, "1" for VALIDATED
+	# The message_xml__mode_setup() routine is a holdover from CUSA/FiServ.
+	#
+	# Eventually, for CUProdigy, this message_xml__mode_setup() routine may
+	# be recoded to perform a facilitate verification related to:
+	#	<response><error>
+	# and:
+	#	<response><transaction><type>
+	#
+	# And, if I can convince CUProdigy people to implement a new value for:
+	#	<message><![CDATA[<request><transaction><requestId>
+	# then this routine would be needed to facilitate verification related
+	# to:
+	#	<response><transaction><requestId>
+	1;
+}
+
+sub message_xml_Request_ValidatePassword{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","ValidatePassword");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"ValidatePassword",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<pinNumber>',${request_memberpwd},'</pinNumber>') : '<pinNumber/>' ),
+			'<password>',${initial_password},'</password>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_GetMemberAutoEnrollInfo{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","GetMemberAutoEnrollInfo");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"GetMemberAutoEnrollInfo",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			# ( ${request_memberpwd} ne "" ? join("",'<pinNumber>',${request_memberpwd},'</pinNumber>') : '<pinNumber/>' ),
+			( ${initial_password} ne "" ? join("",'<pinNumber>',${initial_password},'</pinNumber>') : '<pinNumber/>' ),
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_Inquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password,@optional)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($yyyy_mm_dd);
+   my($getCardInfo);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","Inquiry");
+	}
+	if    ($optional[0] =~ /^\d{4}-\d{2}-\d{2}$/){
+		$yyyy_mm_dd=$optional[0];
+	}elsif($optional[0] =~ /^\d{8}$/){
+		$yyyy_mm_dd=substr($optional[0],0,4)."-".substr($optional[0],4,2)."-".substr($optional[0],6,2);
+	}
+	if($optional[1] =~ /^1$|^All$/i){
+   		$getCardInfo=1;
+	}else{
+   		$getCardInfo=0;
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"Inquiry",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<cutoff>',${yyyy_mm_dd},'</cutoff>',	# Formatted as YYYY-MM-DD
+			( ${getCardInfo} ?  '<getCardInfo>'."All".'</getCardInfo>' : '' ),	# On 2021-10-25 (during data evaluation testing) was observed that Inquiry method request including <getCardInfo> option can cause a critical failure when a member has a card with an "issue date" or an "expiration date" value "0000-00-00", which the Java language used by CUProdigy API can not load as a "date" value.
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_AccountInquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password,@optional)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($yyyy_mm_dd);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","AccountInquiry");
+	}
+	if($optional[0] =~ /^1$|^All$/i){
+   		$getCardInfo=1;
+	}else{
+   		$getCardInfo=0;
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"AccountInquiry",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${getCardInfo} ?  '<getCardInfo>'."All".'</getCardInfo>' : '' ),	# On 2021-10-25 (during data evaluation testing) was observed that AccountInquiry method request including <getCardInfo> option can cause a critical failure when a member has a card with an "issue date" or an "expiration date" value "0000-00-00", which the Java language used by CUProdigy API can not load as a "date" value.
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_AccountDetailInquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$initial_password,$single_dp_ln,$single_member,$single_account,$single_cert,@optional)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($yyyy_mm_dd);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+   my(@f);
+   my($cuprodigy_accountNumber__composit);
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","AccountDetailInquiry");
+	}
+	$cuprodigy_accountNumber__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${single_member},${single_account});	# Does not use $single_cert
+	if    ($optional[0] =~ /^\d{4}-\d{2}-\d{2}$/){
+		$yyyy_mm_dd=$optional[0];
+	}elsif($optional[0] =~ /^\d{8}$/){
+		$yyyy_mm_dd=substr($optional[0],0,4)."-".substr($optional[0],4,2)."-".substr($optional[0],6,2);
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"AccountDetailInquiry",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<accountNumber>',${cuprodigy_accountNumber__composit},'</accountNumber>',
+			'<cutoff>',${yyyy_mm_dd},'</cutoff>',	# Formatted as YYYY-MM-DD
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_GetMemberRelatedAccounts{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($yyyy_mm_dd);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","GetMemberRelatedAccounts");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"GetMemberRelatedAccounts",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_CrossAccountAuthority{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","CrossAccountAuthority");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"CrossAccountAuthority",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_UpdateInfo{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,@values)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+   my(@f,$yyyy_mm_dd);
+        @f=localtime(time());
+        $yyyy_mm_dd=sprintf("%04.0f-%02.0f-%02.0f",1900+$f[5],1+$f[4],$f[3]);
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","UpdateInfo");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"UpdateInfo",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<transactionDate>',${yyyy_mm_dd},'</transactionDate>',	# Formatted as YYYY-MM-DD
+			( $values[0] =~ /^email$/i ? join("",'<email>',&textfilter_html($values[1]),'</email>' ) : '' ),
+			'<transactionSource>',"Internet",'</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_CardInquiry{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$plastic_card_pan)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","CardInquiry");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"CardInquiry",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<pan>',${plastic_card_pan},'</pan>',
+			'<uniqueIdentifier>','1','</uniqueIdentifier>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_ChangeCardStatus{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$plastic_card_pan,$enable_plastic_card)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","ChangeCardStatus");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"ChangeCardStatus",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<pan>',${plastic_card_pan},'</pan>',
+			'<block>',( ${enable_plastic_card} eq "N" ? "true" : "false" ),'</block>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_EStatementActivation{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+   my(@f,$yyyy_mm_dd);
+        @f=localtime(time());
+        $yyyy_mm_dd=sprintf("%04.0f-%02.0f-%02.0f",1900+$f[5],1+$f[4],$f[3]);
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","EStatementActivation");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"EStatementActivation",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<transactionDate>',${yyyy_mm_dd},'</transactionDate>',	# Formatted as YYYY-MM-DD
+			'<transactionSource>',"Internet",'</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_GetETOC{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,@optional)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","GetETOC");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"GetETOC",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_GetStatement{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,@optional)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","GetStatement");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"GetStatement",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			'<transactionDate>',$optional[0],'</transactionDate>',	# Formatted as YYYY-MM
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_LoanApplication{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$data_composit_xml,%data_composit_assoc_array)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+   my($key,$key_sort_order,$key_tag_group_and_name,$key_tag_seq);
+   my($tag_group,$tag_name);
+   my($cuprodigy_loanapp_xmldata);
+   my($identifier,$cuprodigy_xml_branch,$homecu_tag_name_prefix,$cuprodigy_xml_tag);
+   my(@parsing_list)=(		# Used when generating $cuprodigy_loanapp_xmldata (drives a "foreach" loop) to set working variables $cuprodigy_xml_branch and $homecu_tag_name_prefix
+		"<applicant>",			"app",
+		"<coapplicant>",		"coapp",
+		"<applicantEmployment>",	"app_emp",
+		"<coapplicantEmployment>",	"coapp_emp",
+		"<loanInformation>",		"info"
+   );
+   my(%parsing_exceptions)=(	# Used when generating $cuprodigy_loanapp_xmldata (driven by @parsing_list in a "foreach" loop) to segregate out exception values (an abnormality of how HomeCU encoded these Loan App values in the XML submitted via the NEWAPP request) that will be used elsewhere in the larger XML.
+		"info_loanType",		"",	# <loanType>...</loanType>
+		"info_applicationDate",		"",	# <applicationDate>...</applicationDate>
+		"info_note",			""	# <notes><note>...</note></notes>
+   );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","LoanApplication");
+	}
+	# Each client's HomeCU Loan Apps are customized to that client's Vendor core specifications (asking only data for the values that the client's Vendor core supports and formatting/enumerating the values to match what the Vendor core permits); hence, for clients on the CUProdigy core, their HomeCU Loan App data has a direct 1-to-1 XML tag relation (with a small bit of mutation) to what the CUProdigy API expects; and if the HomeCU Loan app data gets a new XML field added then that new XML field automatically flows into the CUProdigy API request.
+	foreach $identifier (@parsing_list){
+		if($identifier =~ /^<.*>$/){
+			($cuprodigy_xml_branch=$identifier)=~s/[<>]//g;
+			next;
+		}else{
+			$homecu_tag_name_prefix=${identifier};
+		}
+		($homecu_tag_name_prefix=${identifier})=~s/_*$//;
+		$cuprodigy_loanapp_xmldata.="<${cuprodigy_xml_branch}>";
+		foreach $key (sort(keys(%data_composit_assoc_array))){
+   			($key_sort_order,$key_tag_group_and_name,$key_tag_seq)=split(/$;/,${key});
+			next if ${key_tag_seq} ne "";	# Just in case the XML data that was received had more than 1 occurrance of the $key_tag_group_and_name (in such a case only use the 1st occurrance).
+   			next unless $key_tag_group_and_name =~ /^${homecu_tag_name_prefix}_[^_][^_]*$/;
+			if(defined($parsing_exceptions{${key_tag_group_and_name}})){	# Segregate out exception values (an abnormality of how HomeCU encoded these Loan App values in the XML submitted via the NEWAPP request) that will be used elsewhere in the larger XML.
+				$parsing_exceptions{${key_tag_group_and_name}}=$data_composit_assoc_array{${key}};
+				next;
+			}
+			$cuprodigy_xml_tag=substr(${key_tag_group_and_name},length(${homecu_tag_name_prefix}."_"));
+			$cuprodigy_loanapp_xmldata.="<${cuprodigy_xml_tag}>".$data_composit_assoc_array{${key}}."</${cuprodigy_xml_tag}>";
+		}
+		$cuprodigy_loanapp_xmldata.="</${cuprodigy_xml_branch}>";
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"LoanApplication",'</type>',
+			'<loanType>',$parsing_exceptions{"info_loanType"},'</loanType>',
+			'<applicationId>',"",'</applicationId>',
+			'<applicationDate>',$parsing_exceptions{"info_applicationDate"},'</applicationDate>',
+			'<incompleteApplication>',"N",'</incompleteApplication>',
+			# '<memberNumber>',${request_membernumber},'</memberNumber>',
+			# ( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			${cuprodigy_loanapp_xmldata},
+			'<notes>','<note>',$parsing_exceptions{"info_note"},'</note>','</notes>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_LoanApplicationStatus{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$loanappid)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","LoanApplicationStatus");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"LoanApplicationStatus",'</type>',
+			'<applicationId>',${loanappid},'</applicationId>',
+			# '<memberNumber>',${request_membernumber},'</memberNumber>',
+			# ( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_GetVendorLoanTypes{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$loanappid)=@_;
+   my(@rtrn);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","GetVendorLoanTypes");
+	}
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"GetVendorLoanTypes",'</type>',
+			# '<memberNumber>',${request_membernumber},'</memberNumber>',
+			# ( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_AccountTransfer{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my(@rtrn);
+   my($cuprodigy_accountNumberFrom__composit,$cuprodigy_accountNumberTo__composit);
+   my($cuprodigy_accountFromId,$cuprodigy_accountToId);
+   my($cuprodigy_transactionDate);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","AccountTransfer");
+	}
+	if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberFrom__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${from_request_membernumber},${from_dp_or_ln});
+	}
+	if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberTo__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${to_request_membernumber},${to_dp_or_ln});
+	}
+	$optional_memo=&message_xml_mutate_transfer_memo(${request_membernumber},${from_request_membernumber},${from_dp_or_ln},${to_request_membernumber},${to_dp_or_ln},${optional_memo});
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"AccountTransfer",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${cuprodigy_accountFromId} ne "" ? join("",'<accountFromId>',${cuprodigy_accountFromId},'</accountFromId>') : '<accountFromId/>' ),
+			'<accountNumberFrom>',${cuprodigy_accountNumberFrom__composit},'</accountNumberFrom>',
+			( ${cuprodigy_accountToId} ne "" ? join("",'<accountToId>',${cuprodigy_accountToId},'</accountToId>') : '<accountToId/>' ),
+			'<accountNumberTo>',${cuprodigy_accountNumberTo__composit},'</accountNumberTo>',
+			( ${cuprodigy_transactionDate} ne "" ? join("",'<transactionDate>',${cuprodigy_transactionDate},'</transactionDate>') : '<transactionDate/>' ),	# Formatted as YYYY-MM-DD
+			'<amount>',${amount},'</amount>',
+			'<message>',&textfilter_html(${optional_memo}),'</message>',
+			'<transactionSource>','Internet','</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_LoanPayment{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my(@rtrn);
+   my($cuprodigy_accountNumberFrom__composit,$cuprodigy_accountNumberTo__composit);
+   my($cuprodigy_accountFromId,$cuprodigy_accountToId);
+   my($cuprodigy_transactionDate);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","LoanPayment");
+	}
+	if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberFrom__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${from_request_membernumber},${from_dp_or_ln});
+	}
+	if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberTo__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${to_request_membernumber},${to_dp_or_ln});
+	}
+	$optional_memo=&message_xml_mutate_transfer_memo(${request_membernumber},${from_request_membernumber},${from_dp_or_ln},${to_request_membernumber},${to_dp_or_ln},${optional_memo});
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"LoanPayment",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${cuprodigy_accountFromId} ne "" ? join("",'<accountFromId>',${cuprodigy_accountFromId},'</accountFromId>') : '<accountFromId/>' ),
+			'<accountNumberFrom>',${cuprodigy_accountNumberFrom__composit},'</accountNumberFrom>',
+			( ${cuprodigy_accountToId} ne "" ? join("",'<accountToId>',${cuprodigy_accountToId},'</accountToId>') : '<accountToId/>' ),
+			'<accountNumberTo>',${cuprodigy_accountNumberTo__composit},'</accountNumberTo>',
+			( ${cuprodigy_transactionDate} ne "" ? join("",'<transactionDate>',${cuprodigy_transactionDate},'</transactionDate>') : '<transactionDate/>' ),	# Formatted as YYYY-MM-DD
+			'<amount>',${amount},'</amount>',
+			'<message>',&textfilter_html(${optional_memo}),'</message>',
+			'<transactionSource>','Internet','</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_LoanAddon{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my(@rtrn);
+   my($cuprodigy_accountNumberFrom__composit,$cuprodigy_accountNumberTo__composit);
+   my($cuprodigy_accountFromId,$cuprodigy_accountToId);
+   my($cuprodigy_transactionDate);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","LoanAddon");
+	}
+	if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberFrom__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${from_request_membernumber},${from_dp_or_ln});
+	}
+	if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberTo__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${to_request_membernumber},${to_dp_or_ln});
+	}
+	$optional_memo=&message_xml_mutate_transfer_memo(${request_membernumber},${from_request_membernumber},${from_dp_or_ln},${to_request_membernumber},${to_dp_or_ln},${optional_memo});
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"LoanAddon",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${cuprodigy_accountFromId} ne "" ? join("",'<accountFromId>',${cuprodigy_accountFromId},'</accountFromId>') : '<accountFromId/>' ),
+			'<accountNumberFrom>',${cuprodigy_accountNumberFrom__composit},'</accountNumberFrom>',
+			( ${cuprodigy_accountToId} ne "" ? join("",'<accountToId>',${cuprodigy_accountToId},'</accountToId>') : '<accountToId/>' ),
+			'<accountNumberTo>',${cuprodigy_accountNumberTo__composit},'</accountNumberTo>',
+			( ${cuprodigy_transactionDate} ne "" ? join("",'<transactionDate>',${cuprodigy_transactionDate},'</transactionDate>') : '<transactionDate/>' ),	# Formatted as YYYY-MM-DD
+			'<amount>',${amount},'</amount>',
+			'<message>',&textfilter_html(${optional_memo}),'</message>',
+			'<transactionSource>','Internet','</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_CheckWithdrawal{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my(@rtrn);
+   my($cuprodigy_accountNumberFrom__composit,$cuprodigy_accountNumberTo__composit);
+   my($cuprodigy_accountFromId,$cuprodigy_accountToId);
+   my($cuprodigy_transactionDate);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","CheckWithdrawal");
+	}
+	if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberFrom__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${from_request_membernumber},${from_dp_or_ln});
+	}
+	if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberTo__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${to_request_membernumber},${to_dp_or_ln});
+	}
+	$optional_memo=&message_xml_mutate_transfer_memo(${request_membernumber},${from_request_membernumber},${from_dp_or_ln},${to_request_membernumber},${to_dp_or_ln},${optional_memo});
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"CheckWithdrawal",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${cuprodigy_accountFromId} ne "" ? join("",'<accountFromId>',${cuprodigy_accountFromId},'</accountFromId>') : '<accountFromId/>' ),
+			'<accountNumberFrom>',${cuprodigy_accountNumberFrom__composit},'</accountNumberFrom>',
+			# ( ${cuprodigy_accountToId} ne "" ? join("",'<accountToId>',${cuprodigy_accountToId},'</accountToId>') : '<accountToId/>' ),
+			# '<accountNumberTo>',${cuprodigy_accountNumberTo__composit},'</accountNumberTo>',
+			( ${cuprodigy_transactionDate} ne "" ? join("",'<transactionDate>',${cuprodigy_transactionDate},'</transactionDate>') : '<transactionDate/>' ),	# Formatted as YYYY-MM-DD
+			'<amount>',${amount},'</amount>',
+			'<message>',&textfilter_html(${optional_memo}),'</message>',
+			'<transactionSource>','Internet','</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_CheckWithdrawalLoan{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my(@rtrn);
+   my($cuprodigy_accountNumberFrom__composit,$cuprodigy_accountNumberTo__composit);
+   my($cuprodigy_accountFromId,$cuprodigy_accountToId);
+   my($cuprodigy_transactionDate);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","CheckWithdrawalLoan");
+	}
+	if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberFrom__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${from_request_membernumber},${from_dp_or_ln});
+	}
+	if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberTo__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${to_request_membernumber},${to_dp_or_ln});
+	}
+	$optional_memo=&message_xml_mutate_transfer_memo(${request_membernumber},${from_request_membernumber},${from_dp_or_ln},${to_request_membernumber},${to_dp_or_ln},${optional_memo});
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"CheckWithdrawalLoan",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${cuprodigy_accountFromId} ne "" ? join("",'<accountFromId>',${cuprodigy_accountFromId},'</accountFromId>') : '<accountFromId/>' ),
+			'<accountNumberFrom>',${cuprodigy_accountNumberFrom__composit},'</accountNumberFrom>',
+			# ( ${cuprodigy_accountToId} ne "" ? join("",'<accountToId>',${cuprodigy_accountToId},'</accountToId>') : '<accountToId/>' ),
+			# '<accountNumberTo>',${cuprodigy_accountNumberTo__composit},'</accountNumberTo>',
+			( ${cuprodigy_transactionDate} ne "" ? join("",'<transactionDate>',${cuprodigy_transactionDate},'</transactionDate>') : '<transactionDate/>' ),	# Formatted as YYYY-MM-DD
+			'<amount>',${amount},'</amount>',
+			'<message>',&textfilter_html(${optional_memo}),'</message>',
+			'<transactionSource>','Internet','</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_Request_CreditCardPayment{
+   my($post_request_parallel_options,$request_membernumber,$request_memberpwd,$from_dplncc,$from_request_membernumber,$from_dp_or_ln,$to_dplncc,$to_request_membernumber,$to_dp_or_ln,$amount,$optional_memo)=@_;
+   my(@rtrn);
+   my($cuprodigy_accountNumberFrom__composit,$cuprodigy_accountNumberTo__composit);
+   my($cuprodigy_accountFromId,$cuprodigy_accountToId);
+   my($cuprodigy_transactionDate);
+   my($requestid);
+   my($echo)=( $CTRL__XML_RESPONSE_VERIFICATION__ECHO_REQUEST_IN_RESPONSE_FROM_CUPRODIGY > 0 ? "true" : "false" );
+	$requestid=join("-",&timestamp(),sprintf("%07.0f",$$),sprintf("%07.0f",$SEQ_MESSAGE_REQUEST__ATTR_REQUESTID++)).${SEQ_MESSAGE_REQUEST__ATTR_REQUESTID__EXTRA_TEXT};
+	if(${CTRL__XML_RESPONSE_VERIFICATION__CHECK_REQUESTID_FROM_CUPRODIGY}){
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:requestId",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		if(defined(&message_xml_use_xml_response_verification(${post_request_parallel_options},"get","transaction:type",${rtrn}))){
+			1;	# Maybe should log an error when encountering an unused value?
+		}
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:requestId",${requestid});
+		&message_xml_use_xml_response_verification(${post_request_parallel_options},"put","transaction:type","CreditCardPayment");
+	}
+	if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberFrom__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${from_request_membernumber},${from_dp_or_ln});
+	}
+	if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+		$cuprodigy_accountNumberTo__composit=&convert_dms_mb_and_dplncc_to_cuprodigy_accountNumber(${to_request_membernumber},${to_dp_or_ln});
+	}
+	$optional_memo=&message_xml_mutate_transfer_memo(${request_membernumber},${from_request_membernumber},${from_dp_or_ln},${to_request_membernumber},${to_dp_or_ln},${optional_memo});
+	push(@rtrn,'<request>');
+	push(@rtrn,&message_xml_request_header());
+	push(@rtrn,join("",
+		'<transaction>',
+			'<requestId>',${requestid},'</requestId>',
+			'<type>',"CreditCardPayment",'</type>',
+			'<memberNumber>',${request_membernumber},'</memberNumber>',
+			( ${request_memberpwd} ne "" ? join("",'<password>',${request_memberpwd},'</password>') : '<password/>' ),
+			( ${cuprodigy_accountFromId} ne "" ? join("",'<accountFromId>',${cuprodigy_accountFromId},'</accountFromId>') : '<accountFromId/>' ),
+			'<accountNumberFrom>',${cuprodigy_accountNumberFrom__composit},'</accountNumberFrom>',
+			( ${cuprodigy_accountToId} ne "" ? join("",'<accountToId>',${cuprodigy_accountToId},'</accountToId>') : '<accountToId/>' ),
+			'<accountNumberTo>',${cuprodigy_accountNumberTo__composit},'</accountNumberTo>',
+			( ${cuprodigy_transactionDate} ne "" ? join("",'<transactionDate>',${cuprodigy_transactionDate},'</transactionDate>') : '<transactionDate/>' ),	# Formatted as YYYY-MM-DD
+			'<amount>',${amount},'</amount>',
+			'<message>',&textfilter_html(${optional_memo}),'</message>',
+			'<transactionSource>','Internet','</transactionSource>',
+		'</transaction>'
+	));
+	push(@rtrn,'</request>');
+	return(@rtrn);
+}
+
+sub message_xml_mutate_transfer_memo{
+    local($request_membernumber,$from_request_membernumber,$from_dp_or_ln,$to_request_membernumber,$to_dp_or_ln,$memo)=@_;
+    local($src,$dst);
+	if($memo =~ /^\s*$/){
+		$memo="";	# Normalize a memo that contains just whitespace.
+	}else{
+		if(${from_request_membernumber} ne "" and ${from_dp_or_ln} ne ""){
+    			if(${request_membernumber} eq ${from_request_membernumber}){
+				($src="Src: ${from_dp_or_ln}")=~s/:(..)$/-$1/;					# This form mimics what CUProdigy would have done if the <request><transaction><message> had been left blank.
+			}else{
+				($src="Src: ${from_request_membernumber}-${from_dp_or_ln}")=~s/:(..)$/-$1/;	# This form mimics what CUProdigy would have done if the <request><transaction><message> had been left blank.
+			}
+		}
+		if(${to_request_membernumber} ne "" and ${to_dp_or_ln} ne ""){
+    			if(${request_membernumber} eq ${to_request_membernumber}){
+				($dst="Dst: ${to_dp_or_ln}")=~s/:(..)$/-$1/;					# This form mimics what CUProdigy would have done if the <request><transaction><message> had been left blank.
+			}else{
+				($dst="Dst: ${to_request_membernumber}-${to_dp_or_ln}")=~s/:(..)$/-$1/;		# This form mimics what CUProdigy would have done if the <request><transaction><message> had been left blank.
+			}
+		}
+		if(${CONF__TRN__MUTATE_TRASFER_MEMO_TO_LIKE_CUPRODIGY_INCLUDE_OF_SRC_AND_DST}){
+			if    (${src} ne "" and ${dst} ne ""){
+				$memo=~s/^\s*//;
+				$memo="; ${src} ${dst} ; ${memo}";	# This is the best formatting hack I can think to fit with CUProdigy internally injecting either the keyword "From" or "To" in front of the specified memo text string before appending the whole thing to the transaction description.
+			}elsif(${src} ne ""){
+				$memo=~s/^\s*//;
+				$memo="; ${src} ; ${memo}";		# This is the best formatting hack I can think to fit with CUProdigy internally injecting either the keyword "From" or "To" in front of the specified memo text string before appending the whole thing to the transaction description.
+			}elsif(${dst} ne ""){
+				$memo=~s/^\s*//;
+				$memo="; ${dst} ; ${memo}";		# This is the best formatting hack I can think to fit with CUProdigy internally injecting either the keyword "From" or "To" in front of the specified memo text string before appending the whole thing to the transaction description.
+			}
+		}
+	}
+	return(${memo});
+}
+
+sub message_xml_use_xml_response_verification{
+   local($post_request_parallel_options,$action,$xml_tag_name,$value)=@_;
+   local($rtrn);
+   local($parallel_seq_std_id);
+	# $xml_tag_name=~tr/a-z/A-Z/;
+	if(&post_request_parallel_seq_normalized(${post_request_parallel_options}) eq ""){
+		$parallel_seq_std_id="";
+	}else{
+		$parallel_seq_std_id=(&post_request_parallel_options_split(${post_request_parallel_options}))[1];
+	}
+	if    ($action =~ /^put$/i){
+		$rtrn=$XML_RESPONSE_VERIFICATION{${xml_tag_name},${parallel_seq_std_id}};
+		$XML_RESPONSE_VERIFICATION{${xml_tag_name},${parallel_seq_std_id}}=${value};
+	}elsif($action =~ /^get$/i){
+		$rtrn=$XML_RESPONSE_VERIFICATION{${xml_tag_name},${parallel_seq_std_id}};
+	}elsif($action =~ /^del$|^delete$/i){
+		$rtrn=$XML_RESPONSE_VERIFICATION{${xml_tag_name},${parallel_seq_std_id}};
+		delete($XML_RESPONSE_VERIFICATION{${xml_tag_name},${parallel_seq_std_id}});
+	}else{
+		$rtrn=undef;
+	}
+	return(${rtrn});
+}
+
+1;

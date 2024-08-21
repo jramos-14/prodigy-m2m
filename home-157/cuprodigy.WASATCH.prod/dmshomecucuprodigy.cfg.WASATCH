@@ -1,0 +1,74 @@
+# /home/cuprodigy/dmshomecucuprodigy.cfg.WASATCH	(for WASATCH)
+
+$CONF__CUPRODIGY_SERVER__TELNET_IPADDR="172.16.121.10";	# WASATCH "prod"
+# $CONF__CUPRODIGY_SERVER__TELNET_IPADDR="127.0.0.1";	# WASATCH
+$CONF__CUPRODIGY_SERVER__TELNET_PORT="19002";	# WASATCH "prod"
+$CONF__CUPRODIGY_SERVER__PROTOCOL="HTTP";	# "HTTP" (send an http "post" of SOAP wrapped "<request>...</request>") or "SOCKET" (just XML "<request>...</request>")
+# $CONF__CUPRODIGY_SERVER__SOAP_LOCALHOST_OPENSSL_BRIDGE_PORT="9001";
+$CONF__CUPRODIGY_AUTHENTICATION__VENDORNUMBER='110011';
+$CONF__CUPRODIGY_AUTHENTICATION__VENDORPASSWORD='W9CUhB2*';
+
+$CONF__MIR_DEFAULT_PHONE_AREA_CODE="801";	# Sometimes WASATCH enters phone numbers without the Area Code
+$CONF__MIR_DEFAULT_COUNTRY_CODE="US";		# Always WASATCH returns a blank value.
+
+$CTRL__DP_BALANCE_INCLUDE_XFER_AUTH=0;
+$CTRL__LN_BALANCE_INCLUDE_XFER_AUTH=0;
+$CTRL__LN_HISTORY_EXPORT_FEE_AND_ESCROW=0;
+
+$CTRL__HISTORY_DAYS_DP=366;
+$CTRL__HISTORY_DAYS_LN=366;
+
+$CONF__MIR__FAKE_DATA_FOR_TESTING=0;
+$CONF__ETOC__FAKE_DATA_FOR_TESTING=0;
+$CONF__ESTM__FAKE_DATA_FOR_TESTING=0;
+
+$CONF__XJO__USE=0;							# 2018-07-11 -- As requested by Mark (HomeCU); WASATCH will be maintaining the relationships in HomeCU Odyssey rather than on the CUProdigy core.
+$CTRL__XJO_OVERLOADED__INCLUDE_IN_BALANCES=1;
+
+$CTRL__ALLOW_UNRESTRICTED_TRANSFERS_WITHOUT_XAC_RELATION=1;		# For HomeCU Odyssey code branch
+$CTRL__ALLOW_MEMBER_TO_MEMBER_TRANSFERS_WITHOUT_XAC_RELATION=1;		# For HomeCU Odyssey code branch
+$CONF__MIR__MEMBERTYPE__INCLUDE=1;					# For HomeCU 0dyssey code branch
+
+$CTRL__DBM_FILE__XML_DATA_BY_TAG_INDEX=0;	# 2017-12-01 -- Gary (HomeCU) is observing that the ~/TMP/DBM_FILE__XML_DATA_BY_TAG_INDEX.* files are growing to about 25MB because clearly "undef(%XML_DATA_BY_TAG_INDEX)" does not initialize the DBM files.
+
+# Unique to WASATCH {
+### &configure_account_by_cuprodigy_type($class_dplncc,$core_balance_type,$core_account_group,$core_account_type,$core_allow_xfer_from,$core_allow_xfer_to,$normalized_type,$dms_depositloantype_open,$dms_depositloantype_closed) ###
+
+&configure_account_by_cuprodigy_type("init");
+# open(TMPFILE,">/tmp/test.log.0"); &configure_account_by_cuprodigy_type__dump(TMPFILE); close(TMPFILE);
+# open(TMPFILE,">/tmp/test.log.1"); &configure_account_by_cuprodigy_type__dump(TMPFILE); close(TMPFILE);
+# } Unique to WASATCH
+
+1;
+
+$CONF__EMAILUPDATE=0;	# 2017-11-08 (+/-) -- HomeCU Odyssey code branch (being user-centric not member-centric) has not yet been coded to send the email address that is correctly associated to the member number (of the INQ request).
+1;
+
+# Enable Uniq IDs
+$CONF__SUBACCOUNT_RECAST_UNIQID__USE=1;
+
+# Enable Notes
+$CONF__INQ__RESPONSE_NOTES__INCLUDE=1;
+$CONF__XAC__RESPONSE_NOTES__INCLUDE=1;
+$CONF__MIR__RESPONSE_NOTES__INCLUDE=1;
+
+# Enable Plastic Cards
+$CONF__PLASTIC_CARD__USE=1;
+%CONF__PLASTIC_CARD__CARD_TYPE=(  "AT","ATM CARD",  "AX","ATM",  "BC","VISA BUSINESS CREDIT",  "BD","VISA BUSINESS DEBIT",  "BR","SUMMIT REWARDS",  "BX","VISA 1% CB",  "CB","VISA BUSINESS CR",  "DB","VISA BUSINESS DEBIT",  "GC","GC",  "PC","VISA CB 1.5%",  "PX","Visa Plat NO CB",  "RB","SUMMIT RW VP",  "RS","SUMMIT RWARD PLAT",  "RX","DEBIT REWARD",  "SR","SUMMIT REWARDS VISA 1% CA Back",  "VC","VISA CLASSIC",  "VD","VISA DEBIT",  "VP","VISA PLATINUM",  "VX","DEBIT",  "XA","XP ATM CARD",  "XB","XP VISA 1% Cash Back",  "XC","XP VISA CLASSIC",  "XD","XP DEBIT",  "XG","XP VISA GOLD",  "XP","XP VISA NO CB-1.5%",  "XR","XP REWARDS DEBIT"  );
+
+1;
+
+# Enable Inquiry sub-account attributes
+$CONF__INQ__BALANCE_ATTRIBUTES=1;
+
+1;
+
+# Enable optional "Fee" and "Escrow" columns in <LoanHistory>
+$CTRL__LN_HISTORY_EXPORT_FEE_AND_ESCROW=1;
+
+1;
+
+# At request of Jonatan Alava on 2023-06-13 as Blossom product is trying to re-work their product to not make this necessary anyway (but is causing issues in the current WASATCH "prod" environment with Blossomp posting TRNs.
+$CTRL__RETURN_IMMEDIATE_099_FOR_SIMULTANIOUS_REQUEST=0;
+
+1;
